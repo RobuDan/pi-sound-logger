@@ -9,8 +9,6 @@ venv/
 
 # Logs
 logs/
-/logs/
-*.log
 
 # Environment variables
 config/.env

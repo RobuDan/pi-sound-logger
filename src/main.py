@@ -3,7 +3,12 @@ import logging
 import asyncio
 import signal
 
+from utils.log import setup_logging
+from utils.config_loader import validate_or_exit
 # TODO: Replace with actual implementation of classes and function
+
+setup_logging()
+validate_or_exit()
 
 class Application:
     """
@@ -31,7 +36,7 @@ class Application:
         Starts required components: database managers and device monitor.
         Waits for MySQL and device connection before launching acquisition.
         """
-        #logging.info("Starting pi-sound-logger application")
+        logging.info("Starting pi-sound-logger application")
 
         # TODO: Start MongoDB sync manager (background task)
         # TODO: Start MySql manage and wat for pool
@@ -60,7 +65,7 @@ class Application:
         """
         Cancels tasks and stops all managers gracefully on shutdown or error.
         """
-        #logging.info("Stopping application...")
+        logging.info("Stopping application...")
 
         # TODO: Cancel tasks and stop managers safely
 
@@ -90,10 +95,10 @@ async def main():
     try: 
         await app.run()
     except (KeyboardInterrupt, SystemExit):
-        # logging.info("Shutdown signal recevied.")
+        logging.info("Shutdown signal recevied.")
         await app.stop()
     except Exception as e:
-        # logging.error(f"Unhandled exception: {e}")
+        logging.error(f"Unhandled exception: {e}")
         await app.stop()
 
 def handle_exit(sig, frame):
@@ -105,8 +110,8 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except SystemExit:
-        # logging.info("SystemExit raised, existing applicaiton.")
+        logging.info("SystemExit raised, existing applicaiton.")
         sys.exit(0)
     except Exception as e:
-        #logging.error(f"Exception during shutdown: {e}")
+        logging.error(f"Exception during shutdown: {e}")
         sys.exit(1)
