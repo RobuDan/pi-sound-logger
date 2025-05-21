@@ -2,6 +2,19 @@ import os
 import logging
 from logging.handlers import RotatingFileHandler
 
+class FlushRotatingFileHandler(RotatingFileHandler):
+    """
+    
+    """
+    def emit(self, record):
+        super().emit(record)
+        self.flush()
+        if hasattr(self.stream, 'fileno'):
+            try:
+                os.fsync(self.stream.fileno())
+            except OSError:
+                pass
+
 def setup_logging():
     """
     Sets up file-based logging with rotation.
@@ -26,7 +39,7 @@ def setup_logging():
     root_logger.setLevel(logging.INFO)
 
     # Configure rotating file handler
-    rotating_handler = RotatingFileHandler(
+    rotating_handler = FlushRotatingFileHandler(
         log_file_path, maxBytes=5 * 1024 * 1024, backupCount=5
     )
     formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')

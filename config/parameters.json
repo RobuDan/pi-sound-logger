@@ -1,0 +1,5 @@
+{
+    "AcousticSequences": ["LAeq", "LAF", "LAFmin", "LAFmax"],
+    "SpectrumSequences": [],
+    "AudioSequences": ["157"]
+}
