@@ -26,6 +26,8 @@ class Config:
     MYSQL_PASSWORD = os.getenv("MYSQL_PASSWORD")
     MYSQL_HOST = os.getenv("MYSQL_HOST")
     MYSQL_PORT = os.getenv("MYSQL_PORT")
+    # Retention period in days
+    MYSQL_DATA_RETENTION = int(os.getenv("MYSQL_DATA_RETENTION", 60))
 
     # Device (For more details, see config/README.md)
     SERIAL_NUMBER = os.getenv("SERIAL_NUMBER")

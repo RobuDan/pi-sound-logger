@@ -5,6 +5,7 @@ import nsrt_mk3_dev
 # TODO aggregation manager
 from utils.json_config_loader import LoadConfiguration
 from .acoustic_stream import AcousticStream
+from .audio_stream import AudioStream
 from .help_functions.timestamp_provider import TimestampProvider
 
 #from .audio_stream import AudioStream
@@ -111,7 +112,9 @@ class AcquisitionManager:
 
         if self.parameters.get("AudioSequences"):
             audio_seq = int(self.parameters["AudioSequences"][0])
-            # self.audio_stream = AudioStream(self.device, audio_seq, timestamp_provider=self.timestamp_provider)
+            self.audio_stream = AudioStream(
+                sample_rate=self.fs,
+                timestamp_provider=self.timestamp_provider)
             logging.info("AudioStream ready.")
 
         tasks = []
@@ -123,11 +126,6 @@ class AcquisitionManager:
         if tasks:
             await asyncio.gather(*tasks)
 
-    async def stop_handle_microphone(self):
-        """
-        Helper to stop all acquisition-related streams.
-        """
-        await self.cleanup_streams()
 
     async def cleanup_streams(self):
         """
@@ -153,5 +151,5 @@ class AcquisitionManager:
         """
         if self.agmanager:
             await self.agmanager.manager_stop()
-        await self.stop_handle_microphone()
+        await self.cleanup_streams()
         logging.info("AcquisitionManager stopped.")

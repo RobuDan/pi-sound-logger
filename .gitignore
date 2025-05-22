@@ -12,3 +12,7 @@ logs/
 
 # Environment variables
 config/.env
+
+# Audio folders
+src/data_storage/audio/
+src/data_storage/construct_audio/

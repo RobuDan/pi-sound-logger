@@ -2,9 +2,12 @@ import asyncio
 import logging
 import datetime
 import time
+import math
+import aiomysql
+from contextlib import asynccontextmanager
 
 from .help_functions.average import calculate_laeq
-
+from utils.env_config_loader import Config
 
 class AcousticStream:
     """
@@ -25,6 +28,8 @@ class AcousticStream:
         self.run_flag = False
         self.stream_task = None
 
+        self.db_manager = DatabaseManagerAcoustic(self.mysql_pool, self.acoustic_parameters)
+
         if not self.timestamp_provider:
             raise ValueError("TimestampProvider is required for AcousticStream.")
 
@@ -42,6 +47,9 @@ class AcousticStream:
         if self.run_flag:
             logging.info("AcousticStream already running.")
             return
+        
+        # Initialize database
+        await self.db_manager.initialize()
 
         if self.timestamp_provider:
             start_ts = self.timestamp_provider.get_start_timestamp()
@@ -85,19 +93,39 @@ class AcousticStream:
                     continue
 
                 try:
+                    # Align to Bucharest time for both log and MySQL
+                    timestamp_dt = base_time.astimezone(self.timestamp_provider.tz)
+                    log_time = timestamp_dt.isoformat(timespec="milliseconds")
+                    timestamp = timestamp_dt.strftime("%Y-%m-%d %H:%M:%S")  # For MySQL
+
                     log_parts = []
 
-                    if "LAF" in self.acoustic_parameters:
-                        log_parts.append(f"LAF={laf_values[0]:.2f} dB")
-                    if "LAFmin" in self.acoustic_parameters:
-                        log_parts.append(f"LAFmin={min(laf_values):.2f} dB")
-                    if "LAFmax" in self.acoustic_parameters:
-                        log_parts.append(f"LAFmax={max(laf_values):.2f} dB")
-                    if "LAeq" in self.acoustic_parameters:
-                        log_parts.append(f"LAeq={calculate_laeq(leq_values):.2f} dB")
+                    for param in self.acoustic_parameters:
+                        if param == "LAeq":
+                            value = calculate_laeq(leq_values)
+                        elif param == "LAF":
+                            value = laf_values[0]
+                        elif param == "LAFmin":
+                            value = min(laf_values)
+                        elif param == "LAFmax":
+                            value = max(laf_values)
+                        else:
+                            continue
 
-                    log_time = base_time.astimezone(self.timestamp_provider.tz).isoformat(timespec="milliseconds")
-                    logging.info(f"[{log_time}] " + " | ".join(log_parts))
+                        # Validate value before logging or saving
+                        if not isinstance(value, (int, float)) or math.isnan(value) or math.isinf(value):
+                            logging.warning(f"[Validation Skip] {param} = {value}")
+                            continue      
+
+                        # Add to log
+                        log_parts.append(f"{param}={value:.2f} dB") 
+
+                        # Insert into MySQL
+                        await self.db_manager.insert_data(param, timestamp, round(value, 2))
+
+                        # logging.info(f"{timestamp}, {param}, {round(value, 2)}")
+                        
+                    # logging.info(f"[{log_time}] " + " | ".join(log_parts))
 
                 except Exception as e:
                     logging.error(f"[Post-process Error] {e}")
@@ -118,3 +146,67 @@ class AcousticStream:
             self.stream_task.cancel()
             await self.stream_task
         logging.info("Cleanup complete.")
+
+
+class DatabaseManagerAcoustic:
+    def __init__(self, connection_pool, sequence_names):
+        self.pool = connection_pool
+        self.sequence_names = sequence_names or []
+        logging.info(sequence_names)
+        self.data_retention_days = Config.MYSQL_DATA_RETENTION
+
+    @asynccontextmanager
+    async def get_connection(self, db_name=None):
+        async with self.pool.acquire() as conn:
+            if db_name:
+                await conn.select_db(db_name)
+            async with conn.cursor(aiomysql.DictCursor) as cur:
+                yield conn, cur
+    
+    async def initialize(self):
+        async with self.get_connection() as (conn, cur):
+            for seq_name in self.sequence_names: 
+                await self.create_database(seq_name)
+
+    async def create_database(self, db_name):
+        # Connect without selecting a database to execute CREATE DATABASE
+        async with self.get_connection() as (conn, cur):
+            await cur.execute(f"CREATE DATABASE IF NOT EXISTS `{db_name}`;")
+            await conn.commit()
+            logging.info(f"Database {db_name} created or already exists.")
+
+    async def _create_table_if_not_exists(self, cur, table_name):
+        create_table_sql = f"""
+        CREATE TABLE IF NOT EXISTS `{table_name}` (
+            id INT PRIMARY KEY AUTO_INCREMENT,
+            timestamp TIMESTAMP NOT NULL,
+            value FLOAT NOT NULL,
+            is_sent TINYINT NOT NULL DEFAULT 0,
+            is_aggregated TINYINT NOT NULL DEFAULT 0,
+            INDEX idx_timestamp (timestamp),
+            INDEX idx_is_sent (is_sent),
+            INDEX idx_is_aggregated (is_aggregated),
+            INDEX idx_is_sent_is_aggregated (is_sent, is_aggregated)
+        );
+        """
+        await cur.execute(create_table_sql)
+
+        # Add event for deleting old records every 1 day, entries older config days
+        create_event_sql = f"""
+        CREATE EVENT IF NOT EXISTS `ev_delete_old_data_{table_name}`
+        ON SCHEDULE EVERY 1 DAY
+        DO
+            DELETE FROM `{table_name}`
+            WHERE TIMESTAMP < NOW() - INTERVAL {self.data_retention_days} DAY;
+        """
+        await cur.execute(create_event_sql)
+
+    async def insert_data(self, db_name, timestamp, value):
+        async with self.get_connection(db_name=db_name) as (conn, cur):
+            await self._create_table_if_not_exists(cur, db_name)
+            insert_sql = f"""
+            INSERT INTO `{db_name}` (timestamp, value, is_sent, is_aggregated)
+            VALUES (%s, %s, %s, %s);
+            """
+            await cur.execute(insert_sql, (timestamp, value, 0, 0))
+            await conn.commit()
