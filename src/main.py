@@ -45,7 +45,7 @@ class Application:
         try:
             # Start MySQL manager and wait for it to establish the pool
             pool = await self.mysql_manager.manager_start()
-            logging.info("MySQL Connection is established.")
+            # logging.info("MySQL Connection is established.")
             if pool is not None:
                 #await self.mongodb_manager.set_mysql_pool(pool)
                 self.mysql_ready_event.set()

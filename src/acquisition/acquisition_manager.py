@@ -2,13 +2,12 @@ import asyncio
 import logging
 import nsrt_mk3_dev
 
-# TODO aggregation manager
+from aggregation.aggregation_manager import AggregationManager
 from utils.json_config_loader import LoadConfiguration
 from .acoustic_stream import AcousticStream
 from .audio_stream import AudioStream
 from .help_functions.timestamp_provider import TimestampProvider
 
-#from .audio_stream import AudioStream
 
 class AcquisitionManager:
     """
@@ -34,8 +33,8 @@ class AcquisitionManager:
 
         self.acoustic_stream = None
         self.audio_stream = None
-        self.spectrum_stream = None  # Placeholder
-        self.agmanager = None  # For future aggregation logic
+        self.spectrum_stream = None  # Will not be targeted for this type of device
+        self.agmanager = None  
 
         # Device defaults
         self.fs = 48000              # Fixed sampling rate
@@ -61,6 +60,9 @@ class AcquisitionManager:
         self.timestamp_provider = TimestampProvider()
         self.timestamp_provider.initialize()
 
+        # Start data agregation manager 
+        self.agmanager = AggregationManager(self.agconfig, self.mysql_manager.pool)
+        await self.agmanager.start()
         # Launch selected streams
         await self.start_handle_acquisition()
 
@@ -149,7 +151,7 @@ class AcquisitionManager:
         """
         Stops the full acquisition manager and its subcomponents.
         """
-        if self.agmanager:
-            await self.agmanager.manager_stop()
+
+        await self.agmanager.manager_stop()
         await self.cleanup_streams()
         logging.info("AcquisitionManager stopped.")

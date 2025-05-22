@@ -64,7 +64,7 @@ class AudioStream:
                         timestamp = self.timestamp_provider.get_timestamp()
                         aligned_minute = timestamp.replace(second=0, microsecond=0)
 
-                        audio_frames, _ = stream.read(frames_per_chunk)
+                        audio_frames, _ = await asyncio.to_thread(stream.read, frames_per_chunk)
                         audio_bytes = np.array(audio_frames).flatten().astype(np.int16)
 
                         self.wav_writer.update_timestamp(aligned_minute)

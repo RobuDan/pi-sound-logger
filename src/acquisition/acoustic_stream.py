@@ -53,8 +53,8 @@ class AcousticStream:
 
         if self.timestamp_provider:
             start_ts = self.timestamp_provider.get_start_timestamp()
-            if start_ts:
-                logging.info(f"Aligned start timestamp: {start_ts.isoformat(timespec='milliseconds')}")
+            # if start_ts:
+            #     logging.info(f"Aligned start timestamp: {start_ts.isoformat(timespec='milliseconds')}")
 
         self.run_flag = True
         self.stream_task = asyncio.create_task(self._run_loop())
@@ -65,7 +65,7 @@ class AcousticStream:
         """
         try:
             await asyncio.sleep(self.wait_for_next_second())
-            logging.info("Stream aligned to next second.")
+            # logging.info("Stream aligned to next second.")
 
             last_cycle_start = datetime.datetime.now(datetime.timezone.utc).replace(microsecond=0)
 
@@ -76,8 +76,11 @@ class AcousticStream:
 
                 for i in range(self.samples_per_second):
                     try:
-                        laf = self.device.read_level()
-                        leq = self.device.read_leq()
+                        laf = await asyncio.to_thread(self.device.read_level)
+                        leq = await asyncio.to_thread(self.device.read_leq)
+
+                        # laf = self.device.read_level()
+                        # leq = self.device.read_leq()
                         laf_values.append(laf)
                         leq_values.append(leq)
                     except Exception as e:
@@ -152,7 +155,7 @@ class DatabaseManagerAcoustic:
     def __init__(self, connection_pool, sequence_names):
         self.pool = connection_pool
         self.sequence_names = sequence_names or []
-        logging.info(sequence_names)
+        # logging.info(sequence_names)
         self.data_retention_days = Config.MYSQL_DATA_RETENTION
 
     @asynccontextmanager
