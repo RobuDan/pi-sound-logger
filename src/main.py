@@ -2,13 +2,14 @@ import sys
 import logging
 import asyncio
 import signal
+import nsrt_mk3_dev
 
 from utils.log import setup_logging
 from utils.env_config_loader import validate_or_exit
 from monitoring.monitor_status import MonitorStatus
 from acquisition.acquisition_manager import AcquisitionManager
 from database.mysql.mysql_connection_manager import MySQLConnectionManager
-# TODO: Replace with actual implementation of classes and function
+from database.mongodb.mongodb_connection_manager import MongoDBConnectionManager
 
 setup_logging()
 validate_or_exit()
@@ -24,7 +25,7 @@ class Application:
         Initialize internal components and shared asyncio events.
         """
         self.mysql_manager = MySQLConnectionManager()
-        self.mongodb_manager = None
+        self.mongodb_manager = MongoDBConnectionManager(callback=self.handle_device_disconnected)
         self.acquisition_manager = None
 
         self.mysql_ready_event = asyncio.Event()
@@ -43,32 +44,44 @@ class Application:
         logging.info("Starting pi-sound-logger application")
 
         try:
+            # Start MongoDB manager as an independent, non-blocking task
+            mongo_task = asyncio.create_task(self.mongodb_manager.start())
+            self.tasks.append(mongo_task)
+            logging.info("MongoDB Connection is established.")
+            
             # Start MySQL manager and wait for it to establish the pool
-            pool = await self.mysql_manager.manager_start()
-            # logging.info("MySQL Connection is established.")
+            pool = await self.mysql_manager.start()
+            logging.info("MySQL Connection is established.")
             if pool is not None:
-                #await self.mongodb_manager.set_mysql_pool(pool)
+                await self.mongodb_manager.set_mysql_pool(pool)
                 self.mysql_ready_event.set()
             else:
                 logging.error("Failed to initialize MySQL pool.")
-            monitor_task = asyncio.create_task(self.device_monitor.manager_start())
+
+            # Start monitoring the device presence
+            monitor_task = asyncio.create_task(self.device_monitor.start())
             self.tasks.append(monitor_task)
 
+            # Wait until the device is connected before proceeding
             await self.device_connected_event.wait()
 
             serial_path = self.device_monitor.serial_path
             
-            if serial_path is None:
-                logging.warning("Event was set but serial_path is still None!")
+            if serial_path is not None:
+                # Create the device using serial path and share it across
+                device = nsrt_mk3_dev.NsrtMk3Dev(serial_path)
+
+                # Pass to components that are using it
+                await self.mongodb_manager.set_device(device)
+                self.acquisition_manager = AcquisitionManager(device=device, mysql_manager=self.mysql_manager)
+
+                # Initialization of the las component.
+                self.acquisition_task = asyncio.create_task(self.acquisition_manager.start())
+                self.tasks.append(self.acquisition_task)
+
+                logging.info(f"NSRT device on port {serial_path} is ready. Proceeding to acquisition setup...")
             else:
-                logging.info(f"Serial path: {serial_path}")
-
-            self.acquisition_manager = AcquisitionManager(serial_path=serial_path, mysql_manager=self.mysql_manager)
-            self.acquisition_task = asyncio.create_task(self.acquisition_manager.manager_start())
-
-            # Wait until the device is connected before proceeding
-            #await self.device_connected_event.wait()
-            logging.info("NSRT device is ready proceeding to acquisition setup...")
+                logging.warning("Event was set but serial_path is still None!")
 
         except Exception as e:
             logging.error(f"Failure due to {e}")
@@ -86,20 +99,27 @@ class Application:
             except asyncio.CancelledError:
                 logging.info("Acquisition task cancelled successfully.")
             try:
-                await self.acquisition_manager.manager_stop()
+                await self.acquisition_manager.stop()
             except Exception as e:
                 logging.error(f"Error stopping the manager: {e}")
 
+        # No serial path, inform MongoDB that device is disconnected
+        self.mongodb_manager.set_serial_path(None)
+
+        # Wait for reconnection
         await self.device_connected_event.wait()
+
+        # Reconnect logic
         serial_path = self.device_monitor.serial_path
+        self.mongodb_manager.set_serial_path(serial_path)
         self.acquisition_manager = AcquisitionManager(serial_path=serial_path, mysql_manager=self.mysql_manager)
-        self.acquisition_task = asyncio.create_task(self.acquisition_manager.manager_start())
+        self.acquisition_task = asyncio.create_task(self.acquisition_manager.start())
         self.tasks.append(self.acquisition_task)
 
     async def restart_device_manager(self):
         logging.info("Restarting device manager with the new configuration.")
-        await self.acquisition_manager.manager_stop()
-        await self.acquisition_manager.manager_start()
+        await self.acquisition_manager.stop()
+        await self.acquisition_manager.start()
 
     async def stop(self):
         """
@@ -114,11 +134,11 @@ class Application:
             except asyncio.CancelledError:
                 logging.info(f"Task cancelled successfully.")
         if self.acquisition_manager:
-            await self.acquisition_manager.manager_stop()
+            await self.acquisition_manager.stop()
         if self.mongodb_manager:
-            await self.mongodb_manager.manager_stop()
+            await self.mongodb_manager.stop()
         if self.mysql_manager:
-            await self.mysql_manager.manager_stop()
+            await self.mysql_manager.stop()
         logging.info("Application stopped.")
 
     async def run(self):

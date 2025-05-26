@@ -14,7 +14,7 @@ class MySQLConnectionManager:
         self.password = Config.MYSQL_PASSWORD
         self.pool = None
 
-    async def manager_start(self):
+    async def start(self):
         """
         Attempts to create a connection pool with retries and exponential backoff.
         Returns the pool once successful.
@@ -45,7 +45,7 @@ class MySQLConnectionManager:
             logging.error("All attempts to connect to MySQL failed.")
             # raise ConnectionError("Unable to establish a connection to MySQL after multiple retries.")
         
-    async def manager_stop(self):
+    async def stop(self):
         """
         Closes the MySQL connection pool cleanly.
         """

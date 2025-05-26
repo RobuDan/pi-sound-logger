@@ -21,11 +21,11 @@ class AcquisitionManager:
     - Cleanly stop all tasks on shutdown
     """
 
-    def __init__(self, serial_path, mysql_manager):
+    def __init__(self, device, mysql_manager):
         """
         Initialize internal components, placeholders, and device-specific defaults.
         """
-        self.serial_path = serial_path
+        self.device =device
         self.mysql_manager = mysql_manager
 
         self.parameters = None
@@ -40,11 +40,9 @@ class AcquisitionManager:
         self.fs = 48000              # Fixed sampling rate
         self.tau = 0.125             # Time constant (sec)
         self.weighting = "A"         # Default dB weighting (can be "C" or "Z")
-
-        self.device = None
         self.timestamp_provider = TimestampProvider  # Initialized in manager_start()
 
-    async def manager_start(self):
+    async def start(self):
         """
         Entry point for full initialization and stream startup.
         """
@@ -70,7 +68,6 @@ class AcquisitionManager:
         """
         Connects to the NSRT device and applies core configuration.
         """
-        self.device = nsrt_mk3_dev.NsrtMk3Dev(self.serial_path)
 
         if not self.device.write_tau(self.tau):
             raise RuntimeError(f"Failed to set tau to {self.tau}s")
@@ -147,11 +144,11 @@ class AcquisitionManager:
                 else:
                     logging.info(f"{task} stopped successfully.")
 
-    async def manager_stop(self):
+    async def stop(self):
         """
         Stops the full acquisition manager and its subcomponents.
         """
 
-        await self.agmanager.manager_stop()
+        await self.agmanager.stop()
         await self.cleanup_streams()
         logging.info("AcquisitionManager stopped.")

@@ -85,7 +85,7 @@ class MonitorStatus:
         finally:
             self.callback_in_progress = False
 
-    async def manager_start(self):
+    async def start(self):
         """
         Entry point for the monitoring task.
         """

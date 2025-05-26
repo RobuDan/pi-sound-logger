@@ -44,7 +44,7 @@ class AggregationManager:
                 except (ImportError, AttributeError) as e:
                     logging.error(f"Error loading aggregator for {param}: {e}")
 
-    async def manager_stop(self):
+    async def stop(self):
         logging.info(f"Stopping AggregationManager and it's tasks...")
         for task in self.tasks:
             task.cancel()
