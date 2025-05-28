@@ -178,7 +178,7 @@ class DatabaseManagerAcoustic:
             await conn.commit()
             logging.info(f"Database {db_name} created or already exists.")
 
-    async def _create_table_if_not_exists(self, cur, table_name):
+    async def _create_table_if_not_exists(self,conn, cur, table_name):
         create_table_sql = f"""
         CREATE TABLE IF NOT EXISTS `{table_name}` (
             id INT PRIMARY KEY AUTO_INCREMENT,
@@ -203,10 +203,11 @@ class DatabaseManagerAcoustic:
             WHERE TIMESTAMP < NOW() - INTERVAL {self.data_retention_days} DAY;
         """
         await cur.execute(create_event_sql)
+        await conn.commit() 
 
     async def insert_data(self, db_name, timestamp, value):
         async with self.get_connection(db_name=db_name) as (conn, cur):
-            await self._create_table_if_not_exists(cur, db_name)
+            await self._create_table_if_not_exists(conn, cur, db_name)
             insert_sql = f"""
             INSERT INTO `{db_name}` (timestamp, value, is_sent, is_aggregated)
             VALUES (%s, %s, %s, %s);

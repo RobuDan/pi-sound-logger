@@ -3,6 +3,7 @@ import aiomysql
 from aggregation.base_aggregator import BaseAggregator
 
 from utils.env_config_loader import Config
+
 data_retention_days = Config.MYSQL_DATA_RETENTION
 
 class ValueAggregator(BaseAggregator):
@@ -58,7 +59,6 @@ class ValueAggregator(BaseAggregator):
                 );
                 """
                 await cur.execute(create_table_sql)
-                await conn.commit()
 
                 # Add event for deleting old records every 1 day, entries older config days
                 create_event_sql = f"""

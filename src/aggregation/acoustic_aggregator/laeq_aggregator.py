@@ -40,7 +40,7 @@ class LAeqAggregator(ValueAggregator):
 
     async def aggregate(self):
         #Empty function
-            pass
+        pass
     
     async def aggregate_lden(self, db_name, start_time, end_time): 
         logging.info(f"LDEN aggregator gets called")
@@ -105,7 +105,7 @@ class LAeqAggregator(ValueAggregator):
                 );
                 """
                 await cur.execute(create_table_sql)
-                await conn.commit()
+
                 # Add event for deleting old records every 1 day, entries older config days
                 create_event_sql = f"""
                 CREATE EVENT IF NOT EXISTS `ev_delete_old_data_{table_name}`
