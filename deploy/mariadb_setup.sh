@@ -25,7 +25,7 @@ echo "[INFO] Securing MariaDB..."
 
 # Set root password and authentication plugin to mysql_native_password
 echo "[INFO] Setting root@localhost authentication method and password..."
-sudo mariadb -e "ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING PASSWORD('${MYSQL_PASSWORD}'); FLUSH PRIVILEGES;"
+sudo mariadb -u root -p"${MYSQL_PASSWORD}"- e "ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING PASSWORD('${MYSQL_PASSWORD}'); FLUSH PRIVILEGES;"
 
 # If user is not root, create as global superuser
 if [ "$MYSQL_USER" != "root" ]; then
