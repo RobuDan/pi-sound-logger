@@ -67,21 +67,24 @@ class Application:
 
             serial_path = self.device_monitor.serial_path
             
-            if serial_path is not None:
-                # Create the device using serial path and share it across
-                device = nsrt_mk3_dev.NsrtMk3Dev(serial_path)
+            # Preventing empty race contitions
+            while serial_path is None:
+                logging.warning("Device event se but serial_path is None. Waiting")
+                await asyncio.sleep(0.1)
+                serial_path = self.device_monitor.serial_path
 
-                # Pass to components that are using it
-                await self.mongodb_manager.set_device(device)
-                self.acquisition_manager = AcquisitionManager(device=device, mysql_manager=self.mysql_manager)
+            # Create the device using serial path and share it across
+            device = nsrt_mk3_dev.NsrtMk3Dev(serial_path)
 
-                # Initialization of the las component.
-                self.acquisition_task = asyncio.create_task(self.acquisition_manager.start())
-                self.tasks.append(self.acquisition_task)
+            # Pass to components that are using it
+            await self.mongodb_manager.set_device(device)
+            self.acquisition_manager = AcquisitionManager(device=device, mysql_manager=self.mysql_manager)
 
-                logging.info(f"NSRT device on port {serial_path} is ready. Proceeding to acquisition setup...")
-            else:
-                logging.warning("Event was set but serial_path is still None!")
+            # Initialization of the las component.
+            self.acquisition_task = asyncio.create_task(self.acquisition_manager.start())
+            self.tasks.append(self.acquisition_task)
+
+            logging.info(f"NSRT device on port {serial_path} is ready. Proceeding to acquisition setup...")
 
         except Exception as e:
             logging.error(f"Failure due to {e}")

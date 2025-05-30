@@ -18,7 +18,7 @@ class MonitorStatus:
 
 
         # Used for Linux device detection in /dev/serial/by-id/
-        self.target_keywords = ["Convergence_Instruments", "NSRT", "mk4"]
+        self.target_keywords = ["Convergence_Instruments", "NSRT", "mk3"]
 
     def get_serial_port(self):
         """
