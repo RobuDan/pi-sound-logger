@@ -8,7 +8,7 @@ if [ -f variables.env ]; then
 fi
 
 PROJECT_ROOT="${PROJECT_ROOT:-$PWD}"
-VENV_NAME="${VENV_NAME:-.venv}"
+VENV_NAME="${VENV_NAME:-venv}"
 
 cd "$PROJECT_ROOT"
 

@@ -1,5 +1,5 @@
 #!/bin/bash
-# Minimal MariaDB setup: always set root password and plugin; no DB or extra user created.
+# MariaDB setup: always set root password and plugin; no DB or extra user created.
 set -e
 
 cd "$(dirname "$0")"
@@ -23,15 +23,22 @@ sudo systemctl restart mariadb
 
 echo "[INFO] Securing MariaDB..."
 
-# Always set root password and authentication plugin to mysql_native_password
+# Set root password and authentication plugin to mysql_native_password
 echo "[INFO] Setting root@localhost authentication method and password..."
-sudo mysql <<EOF
-ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${MYSQL_PASSWORD}';
+sudo mariadb -e "ALTER USER 'root'@'localhost' IDENTIFIED VIA mysql_native_password USING PASSWORD('${MYSQL_PASSWORD}'); FLUSH PRIVILEGES;"
+
+# If user is not root, create as global superuser
+if [ "$MYSQL_USER" != "root" ]; then
+    echo "[INFO] Creating global admin user: $MYSQL_USER"
+    sudo mariadb -u root -p"${MYSQL_PASSWORD}" <<EOF
+CREATE USER IF NOT EXISTS '${MYSQL_USER}'@'${MYSQL_HOST}' IDENTIFIED BY '${MYSQL_PASSWORD}';
+GRANT ALL PRIVILEGES ON *.* TO '${MYSQL_USER}'@'${MYSQL_HOST}' WITH GRANT OPTION;
 FLUSH PRIVILEGES;
 EOF
+fi
 
 # Remove anonymous users, disable remote root, remove test DB
-sudo mysql -u root -p"${MYSQL_PASSWORD}" <<EOF
+sudo mariadb -u root -p"${MYSQL_PASSWORD}" <<EOF
 DELETE FROM mysql.user WHERE User='';
 DELETE FROM mysql.user WHERE User='root' AND Host!='localhost';
 DROP DATABASE IF EXISTS test;
@@ -39,7 +46,7 @@ DELETE FROM mysql.db WHERE Db='test' OR Db='test\\_%';
 FLUSH PRIVILEGES;
 EOF
 
-# Ensure event_scheduler=ON (optional, useful for events/triggers)
+# Ensure event_scheduler=ON (needed for events/triggers)
 CONF_FILE="/etc/mysql/mariadb.conf.d/50-server.cnf"
 if ! grep -q "^event_scheduler=ON" "$CONF_FILE"; then
     sudo sed -i '/^\[mysqld\]/a event_scheduler=ON' "$CONF_FILE"
@@ -53,4 +60,4 @@ if [[ "$SCHEDULER_STATUS" == "ON" ]]; then
     echo "[SUCCESS] event_scheduler is ON."
 fi
 
-echo "[ALL DONE] MariaDB minimal setup complete!"
+echo "[ALL DONE] MariaDB setup complete!"
