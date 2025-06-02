@@ -27,6 +27,8 @@ After=network.target
 [Service]
 User=$SERVICE_USER
 WorkingDirectory=$PROJECT_ROOT
+ExecStartPre=/bin/sleep 12
+ExecStartPre=/usr/bin/udevadm settle
 ExecStart=$PYTHON_BIN $PROJECT_ROOT/$APP_ENTRY
 Restart=always
 KillSignal=SIGTERM
