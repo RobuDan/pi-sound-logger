@@ -15,11 +15,16 @@ class LAFAggregator(ValueAggregator):
     async def notifyAboutInterval(self, interval, start_time, end_time):
         source_table_name = "LAF" if interval == '1min' else "LAF_percentiles_1min"
         target_table_name = f"LAF_percentiles_{interval}"
-        await self.aggregate_percentiles(self.db_name, source_table_name, target_table_name, start_time, end_time)
+        await self.aggregate_percentiles(self.db_name, interval, source_table_name, target_table_name, start_time, end_time)
     
-    async def aggregate_percentiles(self, db_name, source_table_name, target_table_name, start_time, end_time):
-        values = await self.fetch_records(db_name, source_table_name, start_time, end_time)
-        result = self.calculate_percentiles(values)
+    async def aggregate_percentiles(self, db_name, interval, source_table_name, target_table_name, start_time, end_time):
+        if interval == '1min':
+            values = await self.fetch_records(db_name, source_table_name, start_time, end_time)
+            result = self.calculate_percentiles(values)
+        else:
+            percentile_rows = await self.fetch_percentile_records(db_name, source_table_name, start_time, end_time)
+            result = self.calculate_mean_percentiles(percentile_rows)
+
         if result:
             await self.insert_percentiles(db_name, target_table_name, start_time, result)
         else:
@@ -82,6 +87,30 @@ class LAFAggregator(ValueAggregator):
                 await cur.execute(create_event_sql)
                 await conn.commit()
 
+    async def fetch_percentile_records(self, db_name, table_name, start_time, end_time):
+        """Fetch all percentile values from LAF_percentiles_1min for the given interval."""
+        records = []
+        async with self.connection_pool.acquire() as conn:
+            await conn.select_db(db_name)
+            async with conn.cursor() as cur:
+                fetch_sql = f"""
+                SELECT L5, L10, L50, L90, L95
+                FROM `{table_name}`
+                WHERE timestamp >= %s AND timestamp <= %s;
+                """
+                await cur.execute(fetch_sql, (start_time, end_time))
+                rows = await cur.fetchall()
+                for row in rows:
+                    # row = (L5, L10, L50, L90, L95)
+                    records.append({
+                        "L5": row[0],
+                        "L10": row[1],
+                        "L50": row[2],
+                        "L90": row[3],
+                        "L95": row[4]
+                    })
+        return records
+
     @staticmethod
     def calculate_percentiles(values):
         if not values:
@@ -103,3 +132,27 @@ class LAFAggregator(ValueAggregator):
             "L95": round(percentile_values[4], 2)
         }
         
+    @staticmethod
+    def calculate_mean_percentiles(records):
+        if not records:
+            return None
+
+        # Convert list of dicts to dict of lists
+        percentile_data = {
+            "L5": [],
+            "L10": [],
+            "L50": [],
+            "L90": [],
+            "L95": []
+        }
+        for row in records:
+            for key in percentile_data:
+                if key in row and isinstance(row[key], (int, float)):
+                    percentile_data[key].append(row[key])
+
+        result = {}
+        for key, values in percentile_data.items():
+            if values:
+                result[key] = round(np.mean(values), 2)
+
+        return result if result else None
