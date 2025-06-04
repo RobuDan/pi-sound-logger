@@ -107,15 +107,20 @@ class Application:
                 logging.error(f"Error stopping the manager: {e}")
 
         # No serial path, inform MongoDB that device is disconnected
-        self.mongodb_manager.set_serial_path(None)
+        self.mongodb_manager.set_device(None)
 
         # Wait for reconnection
         await self.device_connected_event.wait()
 
         # Reconnect logic
         serial_path = self.device_monitor.serial_path
-        self.mongodb_manager.set_serial_path(serial_path)
-        self.acquisition_manager = AcquisitionManager(serial_path=serial_path, mysql_manager=self.mysql_manager)
+        while serial_path is None:
+            await asyncio.sleep(0.1)
+            serial_path = self.device_monitor.serial_path
+        device = nsrt_mk3_dev.NsrtMk3Dev(serial_path)
+        new_device = nsrt_mk3_dev.NsrtMk3Dev(serial_path)
+        await self.mongodb_manager.set_device(new_device)
+        self.acquisition_manager = AcquisitionManager(device=new_device, mysql_manager=self.mysql_manager)
         self.acquisition_task = asyncio.create_task(self.acquisition_manager.start())
         self.tasks.append(self.acquisition_task)
 
