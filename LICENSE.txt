@@ -1,0 +1,177 @@
+SPDX-License-Identifier: PolyForm-Noncommercial-1.0.0
+PolyForm Noncommercial License 1.0.0
+https://polyformproject.org/licenses/noncommercial/1.0.0
+
+Required Notice: Copyright © 2025 Robu Marian-Daniel <marian-daniel.robu@outlook.com>
+
+-----------------------------------------------------------------
+Acceptance
+-----------------------------------------------------------------
+In order to get any license under these terms, you must agree to
+them as both strict obligations and conditions to all your licenses.
+
+-----------------------------------------------------------------
+Definitions
+-----------------------------------------------------------------
+The “licensor” is the individual or entity offering these terms,
+and the “software” is the software the licensor makes available
+under these terms.
+
+“You” refers to the individual or entity agreeing to these terms.
+
+“Your company” is any legal entity, sole proprietorship, or other
+kind of organization that you work for, plus all organizations that
+have control over, are under the control of, or are under common
+control with that organization.  “Control” means ownership of
+substantially all the assets of an entity, or the power to direct
+its management and policies by vote, contract, or otherwise.
+Control can be direct or indirect.
+
+“Your licenses” are all the licenses granted to you for the
+software under these terms.
+
+“Use” means anything you do with the software requiring one of
+your licenses.
+
+“Your product” is any work you distribute or host, make available
+as-a-service, or otherwise make available to others, that
+incorporates or is derived from the software or for which the
+software is a dependency.
+
+“Personal use” means Use by an individual for strictly private,
+personal purposes.  Personal use does not include Use by or for
+the benefit of any for-profit or non-profit business, association,
+organization, or governmental body.
+
+“Noncommercial purpose” means a purpose other than (1) generating
+a sale or revenue of any kind or (2) providing a service, software,
+or work for a fee, subscription, or other consideration.
+
+“Permitted purpose” means any personal, hobby, research, or
+educational purpose that is also a noncommercial purpose.
+
+-----------------------------------------------------------------
+Copyright License
+-----------------------------------------------------------------
+The licensor grants you a copyright license for the software to do
+everything you might do with the software that would otherwise
+infringe the licensor’s copyright in it **for any permitted
+purpose**.  However, you may only distribute the software according
+to “Distribution License” and make changes or new works based on
+the software according to “Changes and New Works License”.
+
+-----------------------------------------------------------------
+Distribution License
+-----------------------------------------------------------------
+The licensor grants you an additional copyright license to
+distribute copies of the software.  Your license to distribute
+covers distributing the software with changes and new works
+permitted by “Changes and New Works License”.
+
+-----------------------------------------------------------------
+Notices
+-----------------------------------------------------------------
+You must ensure that anyone who gets a copy of any part of the
+software from you also gets a copy of these terms or the URL for
+them above, as well as copies of any plain-text lines beginning
+with “Required Notice:” that the licensor provided with the
+software.
+
+-----------------------------------------------------------------
+Changes and New Works License
+-----------------------------------------------------------------
+The licensor grants you an additional copyright license to make
+changes and new works based on the software for any permitted
+purpose.
+
+-----------------------------------------------------------------
+Patent License
+-----------------------------------------------------------------
+The licensor grants you a patent license for the software that
+applies for any permitted purpose.
+
+-----------------------------------------------------------------
+Noncommercial Purposes Only
+-----------------------------------------------------------------
+Any other use of the software is **prohibited**, including all
+commercial purposes.  (Examples of prohibited commercial purposes
+would be running the software as part of a paid-for SaaS, selling
+the software, incorporating it in a product you sell, or using it
+internally at a for-profit business.)
+
+-----------------------------------------------------------------
+Proof of Compliance
+-----------------------------------------------------------------
+If the licensor asks, within thirty days you must show that you
+are in compliance with these terms.
+
+-----------------------------------------------------------------
+No Warranty
+-----------------------------------------------------------------
+**THE SOFTWARE COMES “AS IS”, WITHOUT ANY WARRANTY — WHETHER
+EXPRESS, IMPLIED, STATUTORY, OR OTHERWISE.**  INCLUDING WITHOUT
+LIMITATION WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR
+PURPOSE, AND NON-INFRINGEMENT.  YOU BEAR ALL RISK OF USING THE
+SOFTWARE.  Some jurisdictions do not allow the exclusion of
+implied warranties, so this disclaimer may not apply to you.
+
+-----------------------------------------------------------------
+Limitation of Liability
+-----------------------------------------------------------------
+**EXCEPT AS REQUIRED BY LAW, THE LICENSOR WILL NOT BE LIABLE FOR
+ANY DAMAGES, INCLUDING DIRECT, INDIRECT, SPECIAL, INCIDENTAL, OR
+CONSEQUENTIAL DAMAGES, ARISING OUT OF OR RELATED TO THE SOFTWARE OR
+THESE TERMS, UNDER ANY LEGAL THEORY.**  This limitation applies
+even if the licensor has been advised of the possibility of such
+damage.
+
+-----------------------------------------------------------------
+Termination
+-----------------------------------------------------------------
+If you fail to comply with these terms, your licenses end
+automatically and immediately.  Your licenses end automatically if
+the licensor publicly notifies you of your violation.  Your
+licenses also end automatically if the licensor publicly notifies
+any software freedom or open-source initiative that your licenses
+should end for violation of these terms.
+
+-----------------------------------------------------------------
+Disputes
+-----------------------------------------------------------------
+Any dispute arising under these terms will be governed by the laws
+of the jurisdiction where the licensor is located, without regard
+to conflict-of-law rules, and resolved exclusively in the courts of
+that jurisdiction.
+
+-----------------------------------------------------------------
+No Other Rights
+-----------------------------------------------------------------
+These terms do not provide any license or permission under any
+intellectual-property right other than the rights expressly granted
+above.  These terms do not limit, restrict, or otherwise affect any
+lawful fair-use rights, or any use that is exempted by an
+applicable exception or limitation to copyright infringement.
+
+-----------------------------------------------------------------
+Severability
+-----------------------------------------------------------------
+If any provision of these terms is unlawful, void, or
+unenforceable, that provision is severable and the remainder of
+these terms are valid and enforceable.
+
+-----------------------------------------------------------------
+No Waiver
+-----------------------------------------------------------------
+The licensor may not waive a right under these terms except in a
+signed, written agreement.
+
+-----------------------------------------------------------------
+Entire Agreement
+-----------------------------------------------------------------
+These terms embody all the terms of license between you and the
+licensor concerning the software.
+
+-----------------------------------------------------------------
+Version History (informative)
+-----------------------------------------------------------------
+PolyForm Noncommercial License 1.0.0 — released July  9, 2019. :contentReference[oaicite:0]{index=0}
