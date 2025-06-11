@@ -46,12 +46,12 @@ class AudioStallDetector:
                     if self.last_seen_timestamp is None or latest_ts > self.last_seen_timestamp:
                         self.last_seen_timestamp = latest_ts
                         self.stall_scan_counter = 0
-                        logging.info(f"[AudioStallDetector] Detected new timestamp: {latest_ts}")
+                        # logging.info(f"[AudioStallDetector] Detected new timestamp: {latest_ts}")
                     else:
                         self.stall_scan_counter += 1
-                        logging.info(f"[AudioStallDetector] No new timestamp. Stall count: {self.stall_scan_counter}")
+                        # logging.info(f"[AudioStallDetector] No new timestamp. Stall count: {self.stall_scan_counter}")
                 else:
-                    logging.info("[AudioStallDetector] No files found.")
+                    # logging.info("[AudioStallDetector] No files found.")
                     self.stall_scan_counter += 1
 
                 if self.stall_scan_counter >= self.max_stall_scans:
