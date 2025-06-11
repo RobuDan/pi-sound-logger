@@ -7,6 +7,7 @@ import nsrt_mk3_dev
 from utils.log import setup_logging
 from utils.env_config_loader import validate_or_exit
 from monitoring.monitor_status import MonitorStatus
+from monitoring.audio_stall_detector import AudioStallDetector
 from acquisition.acquisition_manager import AcquisitionManager
 from database.mysql.mysql_connection_manager import MySQLConnectionManager
 from database.mongodb.mongodb_connection_manager import MongoDBConnectionManager
@@ -32,6 +33,8 @@ class Application:
 
         self.device_connected_event = asyncio.Event()
         self.device_monitor = MonitorStatus(self.device_connected_event, callback=self.handle_device_disconnected)
+
+        self.audio_detector = None
 
         self.tasks = []
         self.acquisition_task = None
@@ -80,9 +83,15 @@ class Application:
             await self.mongodb_manager.set_device(device)
             self.acquisition_manager = AcquisitionManager(device=device, mysql_manager=self.mysql_manager)
 
-            # Initialization of the las component.
+            # Initialization of acquistion component.
             self.acquisition_task = asyncio.create_task(self.acquisition_manager.start())
             self.tasks.append(self.acquisition_task)
+
+            # Initialization of audio monitoring
+            self.audio_detector = AudioStallDetector(callback=self.handle_device_disconnected)
+            self.audio_detector_task = asyncio.create_task(self.audio_detector.start())
+            self.tasks.append(self.audio_detector_task)
+
 
             logging.info(f"NSRT device on port {serial_path} is ready. Proceeding to acquisition setup...")
 
@@ -93,8 +102,23 @@ class Application:
     async def handle_device_disconnected(self):
         """
         Handles device disconnection by stopping acquisition,
-        waiting for reconnection, and restarting acquisition.
+        stopping audio monitoring, waiting for reconnection,
+        and retrying the acquisition and monitoring startup until successful.
         """
+        # Stop AudioStallDetector first if active
+        if self.audio_detector:
+            self.audio_detector.stop()
+            self.audio_detector = None
+
+        if self.audio_detector_task:
+            self.audio_detector_task.cancel()
+            try:
+                await self.audio_detector_task
+            except asyncio.CancelledError:
+                logging.info("AudioStallDetector task cancelled.")
+            self.audio_detector_task = None
+
+        # Stop acquisition
         if self.acquisition_task:
             self.acquisition_task.cancel()
             try:
@@ -106,23 +130,44 @@ class Application:
             except Exception as e:
                 logging.error(f"Error stopping the manager: {e}")
 
-        # No serial path, inform MongoDB that device is disconnected
+        # Inform MongoDB that the device is disconnected
         self.mongodb_manager.set_device(None)
 
-        # Wait for reconnection
+        # Wait for reconnection signal
         await self.device_connected_event.wait()
 
-        # Reconnect logic
+        # Wait until serial_path is not None
         serial_path = self.device_monitor.serial_path
         while serial_path is None:
             await asyncio.sleep(0.1)
             serial_path = self.device_monitor.serial_path
-        device = nsrt_mk3_dev.NsrtMk3Dev(serial_path)
-        new_device = nsrt_mk3_dev.NsrtMk3Dev(serial_path)
-        await self.mongodb_manager.set_device(new_device)
-        self.acquisition_manager = AcquisitionManager(device=new_device, mysql_manager=self.mysql_manager)
-        self.acquisition_task = asyncio.create_task(self.acquisition_manager.start())
-        self.tasks.append(self.acquisition_task)
+
+        # Attempt to restart acquisition and monitoring
+        retry_attempts = 0
+        while True:
+            retry_attempts += 1
+            try:
+                logging.info(f"[Application] Attempting acquisition restart (attempt #{retry_attempts})")
+
+                new_device = nsrt_mk3_dev.NsrtMk3Dev(serial_path)
+                await self.mongodb_manager.set_device(new_device)
+                self.acquisition_manager = AcquisitionManager(device=new_device, mysql_manager=self.mysql_manager)
+
+                self.acquisition_task = asyncio.create_task(self.acquisition_manager.start())
+                self.tasks.append(self.acquisition_task)
+
+                # Restart AudioStallDetector
+                self.audio_detector = AudioStallDetector(callback=self.handle_device_disconnected)
+                self.audio_detector_task = asyncio.create_task(self.audio_detector.start())
+                self.tasks.append(self.audio_detector_task)
+
+                logging.info(f"[Application] Acquisition and audio monitoring restarted successfully.")
+                break
+
+            except Exception as e:
+                logging.error(f"[Application] Acquisition restart failed: {e}")
+                await asyncio.sleep(5)  # Wait before retrying
+
 
     async def restart_device_manager(self):
         logging.info("Restarting device manager with the new configuration.")

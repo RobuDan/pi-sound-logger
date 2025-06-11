@@ -3,6 +3,9 @@ import platform
 import asyncio
 import logging
 
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.cron import CronTrigger
+
 class MonitorStatus:
     """
     Monitors the presence of the NSRT device via serial connection.
@@ -15,7 +18,7 @@ class MonitorStatus:
         self.callback = callback
         self.callback_in_progress = False
         self.serial_path = None
-
+        self.scheduler = AsyncIOScheduler()
 
         # Used for Linux device detection in /dev/serial/by-id/
         self.target_keywords = ["Convergence_Instruments", "NSRT", "mk3"]
@@ -88,5 +91,53 @@ class MonitorStatus:
     async def start(self):
         """
         Entry point for the monitoring task.
+        Starts scheduled safety resets and runs initial device check.
         """
-        await self.check_serial_device()
+        try:
+            self.schedule_resets()
+            await self.check_serial_device()
+        except Exception as e:
+            logging.info(e)
+            
+    def schedule_resets(self):
+        """
+        Schedules the resets at 02:00:03 and 04:00:03 AM using APScheduler.
+        """
+        if not self.scheduler.running:
+            self.scheduler.start()
+            logging.info("Scheduler started successfully.")
+
+
+        self.scheduler.add_job(
+            self.execute_scheduled_reset,
+            CronTrigger(hour=2, minute=0, second=3),
+            id='reset_at_2am',
+            replace_existing=True,
+        )
+        logging.info("Scheduled reset job at 02:00:03 AM.")
+
+        self.scheduler.add_job(
+            self.execute_scheduled_reset,
+            CronTrigger(hour=13, minute=0, second=3),  
+            id='reset_at_1pm',
+            replace_existing=True,
+        )
+        logging.info("Scheduled reset job at 13:00:03 PM.")
+
+    async def execute_scheduled_reset(self):
+        """
+        Executes the scheduled reset by calling the provided callback function.
+        Avoids running if a reset is already in progress.
+        """
+        if self.callback and not self.callback_in_progress:
+            logging.info("Executing scheduled reset.")
+            self.callback_in_progress = True
+            try:
+                await self.handle_callback()
+                logging.info("Scheduled reset executed successfully.")
+            except Exception as e:
+                logging.error(f"Error executing scheduled reset: {e}")
+            finally:
+                self.callback_in_progress = False
+        else:
+            logging.warning("Reset skipped because another callback is in progress.")

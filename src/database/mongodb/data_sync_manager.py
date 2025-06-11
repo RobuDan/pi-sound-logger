@@ -372,8 +372,14 @@ class MongoDBDataTransfer:
 
             insert_start = time.perf_counter()
             collection = self.db[table_name.lower()]
+            
+            try:
+                await asyncio.wait_for(collection.insert_many(documents), timeout=15)
+            except asyncio.TimeoutError:
+                return
+            except asyncio.CancelledError:
+                raise
 
-            await collection.insert_many(documents)
             insert_end = time.perf_counter()
             end_time = time.perf_counter()
             # Call success function
@@ -436,7 +442,7 @@ class MongoDBDataTransfer:
         except asyncio.CancelledError:
             logging.info("MongoDBDataTransfer task was cancelled")
         finally:
-            await asyncio.gather(*tasks)
+            await asyncio.gather(*tasks, return_exceptions=True)
             await self.stop()
 
     async def stop(self):
