@@ -4,6 +4,7 @@ import logging
 import importlib
 
 from .time_manager import TimeManager
+from .acoustic_aggregator.incertitude_calculator import IncertitudeCalculator
 
 class AggregationManager:
     def __init__(self, config, connection_pool):
@@ -41,6 +42,11 @@ class AggregationManager:
                     aggregator = class_(param, self.connection_pool, self.time_manager)
                     self.aggregators.append(aggregator)
 
+                    if param == "LAeq":
+                        incert_calc = IncertitudeCalculator(param, self.connection_pool, self.time_manager)
+                        self.aggregators.append(incert_calc)
+
+                        
                 except (ImportError, AttributeError) as e:
                     logging.error(f"Error loading aggregator for {param}: {e}")
 
