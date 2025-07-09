@@ -17,12 +17,12 @@ class IncertitudeCalculator(ValueAggregator):
     def __init__(self, param, connection_pool, time_manager):
         super().__init__(param, connection_pool, time_manager)
         self.db_name = param
-        self.subscribe_to_intervals(['1min', '24h'])  # Keep '1min' only for testing if needed
+        self.subscribe_to_intervals(['24h'])  # Keep '1min' only for testing if needed
         logging.info("[Incertitude] Subscribed to intervals.")
 
     async def notifyAboutInterval(self, interval, start_time, end_time):
         """ Starts with safety wait of 25 seconds."""
-        await asyncio.sleep(25) # Safety wait so all data is populated
+        await asyncio.sleep(25) # Safety wait so all data is populated  
 
         # Fetch precomputed values
         lday, levening, lnight = await self.fetch_lden_components(
@@ -384,3 +384,7 @@ class IncertitudeCalculator(ValueAggregator):
                     return None, None, None
 
                 return row[0], row[1], row[2]
+
+    async def aggregate(self):
+        #Empty function
+        pass
