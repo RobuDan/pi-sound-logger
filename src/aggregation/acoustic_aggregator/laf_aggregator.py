@@ -13,19 +13,15 @@ class LAFAggregator(ValueAggregator):
         self.subscribe_to_intervals(['1min', '24h'])
 
     async def notifyAboutInterval(self, interval, start_time, end_time):
-        source_table_name = "LAF" 
-        target_table_name = "LAF"
+        source_table_name = "LAF" # Fetch the data form the second table
+        target_table_name = f"LAF_percentiles_{interval}" # Inser the data into a specific time interval table
         # source_table_name = "LAF" if interval == '1min' else "LAF_percentiles_1min"
-        # target_table_name = f"LAF_percentiles_{interval}"
+        
         await self.aggregate_percentiles(self.db_name, interval, source_table_name, target_table_name, start_time, end_time)
     
     async def aggregate_percentiles(self, db_name, interval, source_table_name, target_table_name, start_time, end_time):
-        if interval == '1min':
-            values = await self.fetch_records(db_name, source_table_name, start_time, end_time)
-            result = self.calculate_percentiles(values)
-        else:
-            values = await self.fetch_records(db_name, source_table_name, start_time, end_time)
-            result = self.calculate_percentiles(values)
+        values = await self.fetch_records(db_name, source_table_name, start_time, end_time)
+        result = self.calculate_percentiles(values)
 
         if result:
             await self.insert_percentiles(db_name, target_table_name, start_time, result)
