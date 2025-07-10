@@ -13,8 +13,10 @@ class LAFAggregator(ValueAggregator):
         self.subscribe_to_intervals(['1min', '24h'])
 
     async def notifyAboutInterval(self, interval, start_time, end_time):
-        source_table_name = "LAF" if interval == '1min' else "LAF_percentiles_1min"
-        target_table_name = f"LAF_percentiles_{interval}"
+        source_table_name = "LAF" 
+        target_table_name = "LAF"
+        # source_table_name = "LAF" if interval == '1min' else "LAF_percentiles_1min"
+        # target_table_name = f"LAF_percentiles_{interval}"
         await self.aggregate_percentiles(self.db_name, interval, source_table_name, target_table_name, start_time, end_time)
     
     async def aggregate_percentiles(self, db_name, interval, source_table_name, target_table_name, start_time, end_time):
@@ -22,8 +24,8 @@ class LAFAggregator(ValueAggregator):
             values = await self.fetch_records(db_name, source_table_name, start_time, end_time)
             result = self.calculate_percentiles(values)
         else:
-            percentile_rows = await self.fetch_percentile_records(db_name, source_table_name, start_time, end_time)
-            result = self.calculate_mean_percentiles(percentile_rows)
+            values = await self.fetch_records(db_name, source_table_name, start_time, end_time)
+            result = self.calculate_percentiles(values)
 
         if result:
             await self.insert_percentiles(db_name, target_table_name, start_time, result)
