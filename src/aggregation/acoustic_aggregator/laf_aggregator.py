@@ -120,7 +120,7 @@ class LAFAggregator(ValueAggregator):
         if len(values) == 0:
             return None
 
-        percentile_values = np.percentile(values, [5, 10, 50, 90, 95])
+        percentile_values = np.percentile(values, [95, 90, 50, 10, 5])
         
         return {
             "L5": round(percentile_values[0], 2),

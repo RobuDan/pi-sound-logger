@@ -7,7 +7,7 @@ import math
 import numpy as np
 import asyncio
 import logging
-from datetime import timedelta
+from datetime import timedelta, datetime
 from collections import defaultdict
 
 from .value_aggregator import ValueAggregator
@@ -22,7 +22,6 @@ class IncertitudeCalculator(ValueAggregator):
 
     async def notifyAboutInterval(self, interval, start_time, end_time):
         """ Starts with safety wait of 25 seconds."""
-        await asyncio.sleep(25) # Safety wait so all data is populated  
 
         # Fetch precomputed values
         lday, levening, lnight = await self.fetch_lden_components(
@@ -47,7 +46,7 @@ class IncertitudeCalculator(ValueAggregator):
 
         logging.info(f"[Incertitude] U(Lden) = ±{u_lden:.2f} dB")
         await self.insert_aggregated_value(self.db_name, "U_Lden", start_time, u_lden)
-        
+    
     async def compute_lday_temporal_uncertainty(self, db_name, start_time, end_time, lday):
         """
         Entry point for computing U(Lday), with group preparation and final uncertainty logic.
@@ -72,7 +71,7 @@ class IncertitudeCalculator(ValueAggregator):
         }
 
         grouped_result = await self.compute_groups_components(db_name, source_table_name, start_time, group_datetimes)
-
+        logging.info(f'{grouped_result}')
         if grouped_result is None or len(grouped_result) < 4:
             logging.warning("[U(Lday)] Not all 4 groups available. Aborting.")
             return
@@ -177,7 +176,7 @@ class IncertitudeCalculator(ValueAggregator):
             values = await self.fetch_records(db_name, source_table_name, group_start, group_end)
             # Fetch values from Laf database to compute Lres(L90)
             p_values = await self.fetch_records("LAF", "LAF", group_start, group_end)
-
+            
             if not values:
                 logging.warning(f"Aborting U(Lday): missing data in group {group_name} ({group_start} to {group_end})")
                 return None # abort if the group is missing
@@ -186,7 +185,7 @@ class IncertitudeCalculator(ValueAggregator):
             uk, enav = self.compute_group_uncertainty(values, count)
             lres = self.compute_l90_from_group(p_values)
             lk, u_k_prime, ures, cl_prime, cl_res, ulk, weighted_energy = self.compute_expanded_uncertainty(enav, uk, count, lres)
-            
+
             grouped_result[group_name] = {
                 'values': values,
                 'count': count,
@@ -201,6 +200,8 @@ class IncertitudeCalculator(ValueAggregator):
                 'weighted_energy': weighted_energy,
             }
 
+        return grouped_result
+        
     def compute_final_uncertainty_interval(self, grouped_result, lday):
         """
         Uses per-group uncertainty results to compute U(Lday) and Lday_ref, respective for night and evening.
@@ -255,7 +256,7 @@ class IncertitudeCalculator(ValueAggregator):
         e_bar = sum(energies)/ count
 
         # Step 3: Convert back to dB (nergy average level)
-        enav = 1 * math.log10(e_bar)
+        enav = 10 * math.log10(e_bar)
 
         # Step 4: Compute squared deviations from enva (in linear domain)
         enav_energy = 10 ** (0.1 * enav)
@@ -291,7 +292,7 @@ class IncertitudeCalculator(ValueAggregator):
         if len(values) == 0:
             return None
         
-        p_values = np.percentile(values, 90)
+        p_values = np.percentile(values, 10)
 
         return round(p_values, 2)
             
@@ -319,22 +320,42 @@ class IncertitudeCalculator(ValueAggregator):
         # Step 3: ures (fixed rule)
         ures = 4 / math.sqrt(count)
 
-        # Step 4: Lk = corrected level after background substraction
-        lk = 10 * math.log10(10 ** (0.1 * enav) - 10 ** (0.1 * lres)) 
+        # ISO 1996-2 safeguard
+        if enav - lres < 3:
+            # No correction: use enav as Lk directly
+            lk = enav
+            cl_prime = 1.0
+            cl_res = 0.0
+            ulk = u_k_prime
+            logging.warning(
+                f"[ISO 1996-2] enav - lres < 3 dB → skipping background correction. Using Lk = enav = {lk:.2f} dB"
+            )
+        else:
+            # Step 4: Lk = corrected level after background subtraction
+            linear_diff = 10 ** (0.1 * enav) - 10 ** (0.1 * lres)
+            if linear_diff <= 0:
+                logging.error(f"Invalid linear diff: 10^enav - 10^lres = {linear_diff} | enav={enav}, lres={lres}")
+                return None
+            lk = 10 * math.log10(linear_diff)
 
-        # Step 5: cL'
-        cl_prime = 1 / (1 - 10 ** (-0.1 * (enav - lres))) 
+            # Step 5: cL'
+            denom = 1 - 10 ** (-0.1 * (enav - lres))
+            if abs(denom) < 1e-6:
+                logging.error(f"Denominator too small in cL' computation: enav={enav}, lres={lres}")
+                return None
+            cl_prime = 1 / denom
 
-        # Step 6: cLres
-        cl_res = cl_prime * 10 ** (-0.1 * (enav - lres))
+            # Step 6: cLres
+            cl_res = cl_prime * 10 ** (-0.1 * (enav - lres))
 
-        # Step 7: uLk
-        ulk = math.sqrt(
-            (cl_prime ** 2) * (u_k_prime ** 2) +
-            (cl_res ** 2) * (ures ** 2)
-        )
+            # Step 7: uLk
+            inner = (cl_prime ** 2) * (u_k_prime ** 2) + (cl_res ** 2) * (ures ** 2)
+            if inner < 0:
+                logging.error(f"Negative sqrt argument for uLk: {inner}")
+                return None
+            ulk = math.sqrt(inner)
 
-        # Compute the weighted_energy
+        # Final energy term
         weighted_energy = 10 ** (0.1 * lk) * 0.25
         return lk, u_k_prime, ures, cl_prime, cl_res, ulk, weighted_energy
         
