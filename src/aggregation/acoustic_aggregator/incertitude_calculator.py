@@ -33,9 +33,9 @@ class IncertitudeCalculator(ValueAggregator):
             return 
         
         # Compute uncertainty
-        lday_ref, uday_ref = await self.compute_lday_temporal_uncertainty(self.db_name, start_time, end_time, lday)
-        levening_ref, uevening_ref = await self.compute_levening_temporal_uncertainty(self.db_name, start_time, end_time, levening)
-        lnight_ref, unight_ref = await self.compute_lnight_temporal_uncertainty(self.db_name, start_time, end_time, lnight)
+        lday_ref, uday_ref = await self.compute_lday_temporal_uncertainty(self.db_name, start_time, end_time, lday, uncertainty=1)
+        levening_ref, uevening_ref = await self.compute_levening_temporal_uncertainty(self.db_name, start_time, end_time, levening, uncertainty=0.8)
+        lnight_ref, unight_ref = await self.compute_lnight_temporal_uncertainty(self.db_name, start_time, end_time, lnight, uncertainty=0.6)
 
         # Final U(Lden)
         u_lden = self.compute_lden_uncertainty(
@@ -47,7 +47,7 @@ class IncertitudeCalculator(ValueAggregator):
         logging.info(f"[Incertitude] U(Lden) = ±{u_lden:.2f} dB")
         await self.insert_aggregated_value(self.db_name, "U_Lden", start_time, u_lden)
     
-    async def compute_lday_temporal_uncertainty(self, db_name, start_time, end_time, lday):
+    async def compute_lday_temporal_uncertainty(self, db_name, start_time, end_time, lday, uncertainty):
         """
         Entry point for computing U(Lday), with group preparation and final uncertainty logic.
         """
@@ -77,14 +77,14 @@ class IncertitudeCalculator(ValueAggregator):
             return
 
         # Step 2: Compute final U(Lday) using grouped data + lday
-        lday_ref, uday_ref, _, _ = self.compute_final_uncertainty_interval(grouped_result, lday)
+        lday_ref, uday_ref, _, _ = self.compute_final_uncertainty_interval(grouped_result, lday, uncertainty)
 
         # Save or log only what's needed:
         logging.info(f"[U(Lday)] Final: {lday_ref:.2f} ± {uday_ref:.2f} dB")
 
         return lday_ref, uday_ref
 
-    async def compute_levening_temporal_uncertainty(self, db_name, start_time, end_time, levening):
+    async def compute_levening_temporal_uncertainty(self, db_name, start_time, end_time, levening, uncertainty):
         """
         Compute U(Levening) from 15-minute LAeq data grouped in 4 x 1-hour intervals.
         Each group consists of 4 15-minute values.
@@ -114,13 +114,13 @@ class IncertitudeCalculator(ValueAggregator):
             logging.warning("[U(Levening)] Not all 4 groups available. Aborting.")
             return None
 
-        levening_ref, uevening_ref, _, _ = self.compute_final_uncertainty_interval(grouped_result, levening)
+        levening_ref, uevening_ref, _, _ = self.compute_final_uncertainty_interval(grouped_result, levening, uncertainty)
         logging.info(f"[U(Levening)] Final: {levening_ref:.2f} ± {uevening_ref:.2f} dB")
 
         return levening_ref, uevening_ref
 
 
-    async def compute_lnight_temporal_uncertainty(self, db_name, start_time, end_time, lnight):
+    async def compute_lnight_temporal_uncertainty(self, db_name, start_time, end_time, lnight, uncertainty):
         """
         Entry point for computing U(Lnight), using 4x 2-hour groups with 30-minute LAeq values.
         First group spans across two calendar days (23:00–01:00).
@@ -155,7 +155,7 @@ class IncertitudeCalculator(ValueAggregator):
             return None
 
         # Step 2: Compute final U(Lnight)
-        lnight_ref, unight_ref, _, _ = self.compute_final_uncertainty_interval(grouped_result, lnight)
+        lnight_ref, unight_ref, _, _ = self.compute_final_uncertainty_interval(grouped_result, lnight, uncertainty)
 
         # Log final result
         logging.info(f"[U(Lnight)] Final: {lnight_ref:.2f} ± {unight_ref:.2f} dB")
@@ -202,7 +202,7 @@ class IncertitudeCalculator(ValueAggregator):
 
         return grouped_result
         
-    def compute_final_uncertainty_interval(self, grouped_result, lday):
+    def compute_final_uncertainty_interval(self, grouped_result, lday, uncertainty):
         """
         Uses per-group uncertainty results to compute U(Lday) and Lday_ref, respective for night and evening.
         """
@@ -228,7 +228,7 @@ class IncertitudeCalculator(ValueAggregator):
             sum((g['cp'] ** 2) * (upi ** 2) for g in grouped_result.values())
         )
         # Step 4: Final Lday ref + uncertainty
-        l_ref = lday + 1.0
+        l_ref = lday + uncertainty
         u_ref = math.sqrt(u_weight ** 2 + 0.2 ** 2)
 
         return l_ref, u_ref, u_weight, grouped_result
