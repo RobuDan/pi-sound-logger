@@ -9,7 +9,7 @@ import numpy as np
 import sounddevice as sd
 import soundfile as sf
 from pydub import AudioSegment
-from .help_functions.get_device_index import get_device_index
+from acquisition.help_functions.get_device_index import get_device_index
 
 class AudioStream:
     """
@@ -61,14 +61,14 @@ class AudioStream:
                 while self.run_flag:
                     try:
                         # 1) Grab the “official” timestamp from the provider
-                        timestamp = self.timestamp_provider.get_timestamp()
-                        aligned_minute = timestamp.replace(second=0, microsecond=0)
+                        timestamp = self.timestamp_provider.now()
+                        aligned_minute = self.timestamp_provider.floor_to_minute(timestamp)
 
                         # 2) Watchdog: if more than 60s passed since current_file_start_time, force rotate
                         cfst = self.wav_writer.current_file_start_time
                         if cfst:
-                            now = self.timestamp_provider.get_timestamp()
-                            elapsed = (now - cfst).total_seconds()
+                            now = self.timestamp_provider.now()
+
                             if now >= cfst + timedelta(seconds=63):
                                 logging.warning(
                                     "[AudioStream] >60s elapsed since last rotation; forcing rotate"
@@ -143,7 +143,7 @@ class WavWriter:
         """
         Makes sure directories are created. Files are going to be rotated.
         """
-        base_path = os.path.join('..', 'data_storage')
+        base_path = os.path.join('..', '..','data_storage')
         script_dir = os.path.dirname(os.path.abspath(__file__))
 
         construct_path = os.path.join(script_dir, base_path, 'construct_audio')
@@ -180,7 +180,7 @@ class WavWriter:
         Writes a numpy audio buffer to the current WAV file.
         """
         if not self.wavfile:
-            self._open_new_file(datetime.now())
+            self._open_new_file(self.timestamp_provider.current_minute())
         if isinstance(audio_data, np.ndarray):
             pcm_data = audio_data.astype(np.int16).tobytes()
             self.wavfile.writeframes(pcm_data)
@@ -229,8 +229,8 @@ class WavWriter:
                 logging.error(f"[WavWriter] Error during forced MP3 conversion: {e}")
 
         # 2) Open a brand-new WAV for “now” floored to the minute
-        provider_now = self.timestamp_provider.get_timestamp()
-        new_minute = provider_now.replace(second=0, microsecond=0)
+        provider_now = self.timestamp_provider.now()
+        new_minute = self.timestamp_provider.floor_to_minute(provider_now)
         formatted_time = new_minute.strftime("%Y-%m-%d %H-%M-00.wav")
         new_path = os.path.join(self.construct_dir, formatted_time)
         self.wavfile = wave.open(new_path, "wb")

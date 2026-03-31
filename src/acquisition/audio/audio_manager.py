@@ -2,14 +2,14 @@ import asyncio
 import logging
 import nsrt_mk3_dev
 
+from acquisition.help_functions.timestamp_provider import TimestampProvider
 from aggregation.aggregation_manager import AggregationManager
 from utils.json_config_loader import LoadConfiguration
 from .acoustic_stream import AcousticStream
 from .audio_stream import AudioStream
-from .help_functions.timestamp_provider import TimestampProvider
 
 
-class AcquisitionManager:
+class AudioManager:
     """
     Coordinates the initialization and management of acoustic data acquisition.
 
@@ -25,7 +25,7 @@ class AcquisitionManager:
         """
         Initialize internal components, placeholders, and device-specific defaults.
         """
-        self.device =device
+        self.device = device
         self.mysql_manager = mysql_manager
 
         self.parameters = None
@@ -40,7 +40,8 @@ class AcquisitionManager:
         self.fs = 48000              # Fixed sampling rate
         self.tau = 0.125             # Time constant (sec)
         self.weighting = "A"         # Default dB weighting (can be "C" or "Z")
-        self.timestamp_provider = TimestampProvider  # Initialized in manager_start()
+        
+        self.timestamp_provider = TimestampProvider()
 
     async def start(self):
         """
@@ -53,10 +54,6 @@ class AcquisitionManager:
 
         # Setup serial-connected NSRT device
         await self.initialize_device()
-
-        # Setup wall-clock time reference for synchronization
-        self.timestamp_provider = TimestampProvider()
-        self.timestamp_provider.initialize()
 
         # Start data agregation manager 
         self.agmanager = AggregationManager(self.agconfig, self.mysql_manager.pool)
