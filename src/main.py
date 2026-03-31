@@ -5,10 +5,11 @@ import signal
 import nsrt_mk3_dev
 
 from utils.log import setup_logging
-from utils.env_config_loader import validate_or_exit
+from utils.env_config_loader import validate_or_exit, Config
 from monitoring.monitor_status import MonitorStatus
 from monitoring.audio_stall_detector import AudioStallDetector
-from acquisition.acquisition_manager import AcquisitionManager
+from acquisition.audio.audio_manager import AudioManager
+from acquisition.weather.weather_manager import WeatherManager
 from database.mysql.mysql_connection_manager import MySQLConnectionManager
 from database.mongodb.mongodb_connection_manager import MongoDBConnectionManager
 
@@ -27,7 +28,10 @@ class Application:
         """
         self.mysql_manager = MySQLConnectionManager()
         self.mongodb_manager = MongoDBConnectionManager(callback=self.handle_device_disconnected)
-        self.acquisition_manager = None
+
+        # Acquisitions 
+        self.audio_manager = None
+        self.weather_manager = None
 
         self.mysql_ready_event = asyncio.Event()
 
@@ -61,6 +65,14 @@ class Application:
             else:
                 logging.error("Failed to initialize MySQL pool.")
 
+            # Start Weather Acquistion directly, only if there is a valid IP
+            if Config.is_weather_enabled():
+                self.weather_manager = WeatherManager(device_ip=Config.WEATHER_IP, mysql_manager=self.mysql_manager)
+                weather_task = asyncio.create_task(self.weather_manager.start())
+                self.tasks.append(weather_task)
+            else:
+                logging.info("Weather acquisition disabled (no valid WEATHER_IP configured).")
+
             # Start monitoring the device presence
             monitor_task = asyncio.create_task(self.device_monitor.start())
             self.tasks.append(monitor_task)
@@ -72,7 +84,7 @@ class Application:
             
             # Preventing empty race contitions
             while serial_path is None:
-                logging.warning("Device event se but serial_path is None. Waiting")
+                logging.warning("Device event set but serial_path is None. Waiting")
                 await asyncio.sleep(0.1)
                 serial_path = self.device_monitor.serial_path
 
@@ -81,10 +93,10 @@ class Application:
 
             # Pass to components that are using it
             await self.mongodb_manager.set_device(device)
-            self.acquisition_manager = AcquisitionManager(device=device, mysql_manager=self.mysql_manager)
+            self.audio_manager = AudioManager(device=device, mysql_manager=self.mysql_manager)
 
             # Initialization of acquistion component.
-            self.acquisition_task = asyncio.create_task(self.acquisition_manager.start())
+            self.acquisition_task = asyncio.create_task(self.audio_manager.start())
             self.tasks.append(self.acquisition_task)
 
             # Initialization of audio monitoring
@@ -126,12 +138,12 @@ class Application:
             except asyncio.CancelledError:
                 logging.info("Acquisition task cancelled successfully.")
             try:
-                await self.acquisition_manager.stop()
+                await self.audio_manager.stop()
             except Exception as e:
                 logging.error(f"Error stopping the manager: {e}")
 
         # Inform MongoDB that the device is disconnected
-        self.mongodb_manager.set_device(None)
+        await self.mongodb_manager.set_device(None)
 
         # Wait for reconnection signal
         await self.device_connected_event.wait()
@@ -151,9 +163,9 @@ class Application:
 
                 new_device = nsrt_mk3_dev.NsrtMk3Dev(serial_path)
                 await self.mongodb_manager.set_device(new_device)
-                self.acquisition_manager = AcquisitionManager(device=new_device, mysql_manager=self.mysql_manager)
+                self.audio_manager = AudioManager(device=new_device, mysql_manager=self.mysql_manager)
 
-                self.acquisition_task = asyncio.create_task(self.acquisition_manager.start())
+                self.acquisition_task = asyncio.create_task(self.audio_manager.start())
                 self.tasks.append(self.acquisition_task)
 
                 # Restart AudioStallDetector
@@ -171,8 +183,8 @@ class Application:
 
     async def restart_device_manager(self):
         logging.info("Restarting device manager with the new configuration.")
-        await self.acquisition_manager.stop()
-        await self.acquisition_manager.start()
+        await self.audio_manager.stop()
+        await self.audio_manager.start()
 
     async def stop(self):
         """
@@ -186,8 +198,10 @@ class Application:
                 await task
             except asyncio.CancelledError:
                 logging.info(f"Task cancelled successfully.")
-        if self.acquisition_manager:
-            await self.acquisition_manager.stop()
+        if self.audio_manager:
+            await self.audio_manager.stop()
+        if self.weather_manager:
+            await self.weather_manager.stop()
         if self.mongodb_manager:
             await self.mongodb_manager.stop()
         if self.mysql_manager:

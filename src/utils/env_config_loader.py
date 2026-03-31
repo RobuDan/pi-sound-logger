@@ -1,5 +1,7 @@
 import os
 import logging
+import ipaddress
+
 from dotenv import load_dotenv
 
 # Resolve the path of .env file located in project root inside config/ folder 
@@ -32,6 +34,9 @@ class Config:
     # Device (For more details, see config/README.md)
     SERIAL_NUMBER = os.getenv("SERIAL_NUMBER")
 
+    # Weather station IP\
+    WEATHER_IP = os.getenv("WEATHER_IP")
+
     @staticmethod
     def validate():
         """
@@ -50,7 +55,26 @@ class Config:
         missing = [key for key, value in required.items() if not value]
         if missing:
             raise ValueError(f"Missing required environment variables: {', '.join(missing)}")
+    
+    @staticmethod
+    def validate_ip(ip):
+        """
+        Ensure that if WeatherIp exists is also a valid type.
+        """
+        if not ip:
+            return False
         
+        try:
+            ipaddress.ip_address(ip)
+            return True
+        except ValueError:
+            return False
+
+    @staticmethod
+    def is_weather_enabled():
+        return Config.validate_ip(Config.WEATHER_IP)
+
+
 def validate_or_exit():
     """
     Validates config and stops the app early if anything critical is missing.
