@@ -6,10 +6,12 @@ import nsrt_mk3_dev
 
 from utils.log import setup_logging
 from utils.env_config_loader import validate_or_exit, Config
+from utils.json_config_loader import LoadConfiguration
 from monitoring.monitor_status import MonitorStatus
 from monitoring.audio_stall_detector import AudioStallDetector
 from acquisition.audio.audio_manager import AudioManager
 from acquisition.weather.weather_manager import WeatherManager
+from aggregation.aggregation_manager import AggregationManager
 from database.mysql.mysql_connection_manager import MySQLConnectionManager
 from database.mongodb.mongodb_connection_manager import MongoDBConnectionManager
 
@@ -28,6 +30,12 @@ class Application:
         """
         self.mysql_manager = MySQLConnectionManager()
         self.mongodb_manager = MongoDBConnectionManager(callback=self.handle_device_disconnected)
+
+        # Load configuration once 
+        loader = LoadConfiguration()
+        self.parameters, self.audio_aggregation_config = loader.load_config("config/parameters.json")
+
+        self.aggregation_manager = None
 
         # Acquisitions 
         self.audio_manager = None
@@ -64,6 +72,12 @@ class Application:
                 self.mysql_ready_event.set()
             else:
                 logging.error("Failed to initialize MySQL pool.")
+            
+            # Start aggregation manager as a shared service
+            self.aggregation_manager = AggregationManager(self.audio_aggregation_config, self.mysql_manager.pool, weather_enabled=Config.is_weather_enabled())
+            await self.aggregation_manager.start()
+            logging.info("AggregationManager started.")
+
 
             # Start Weather Acquistion directly, only if there is a valid IP
             if Config.is_weather_enabled():
@@ -93,7 +107,7 @@ class Application:
 
             # Pass to components that are using it
             await self.mongodb_manager.set_device(device)
-            self.audio_manager = AudioManager(device=device, mysql_manager=self.mysql_manager)
+            self.audio_manager = AudioManager(device=device, mysql_manager=self.mysql_manager, parameters=self.parameters)
 
             # Initialization of acquistion component.
             self.acquisition_task = asyncio.create_task(self.audio_manager.start())
@@ -163,7 +177,7 @@ class Application:
 
                 new_device = nsrt_mk3_dev.NsrtMk3Dev(serial_path)
                 await self.mongodb_manager.set_device(new_device)
-                self.audio_manager = AudioManager(device=new_device, mysql_manager=self.mysql_manager)
+                self.audio_manager = AudioManager(device=new_device, mysql_manager=self.mysql_manager, parameters=self.parameters)
 
                 self.acquisition_task = asyncio.create_task(self.audio_manager.start())
                 self.tasks.append(self.acquisition_task)
@@ -202,6 +216,8 @@ class Application:
             await self.audio_manager.stop()
         if self.weather_manager:
             await self.weather_manager.stop()
+        if self.aggregation_manager:
+            await self.aggregation_manager.stop()
         if self.mongodb_manager:
             await self.mongodb_manager.stop()
         if self.mysql_manager:

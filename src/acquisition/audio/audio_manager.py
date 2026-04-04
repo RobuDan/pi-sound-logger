@@ -21,15 +21,13 @@ class AudioManager:
     - Cleanly stop all tasks on shutdown
     """
 
-    def __init__(self, device, mysql_manager):
+    def __init__(self, device, mysql_manager, parameters):
         """
         Initialize internal components, placeholders, and device-specific defaults.
         """
         self.device = device
         self.mysql_manager = mysql_manager
-
-        self.parameters = None
-        self.agconfig = None
+        self.parameters = parameters
 
         self.acoustic_stream = None
         self.audio_stream = None
@@ -47,17 +45,9 @@ class AudioManager:
         """
         Entry point for full initialization and stream startup.
         """
-        # Load parameters and aggregation config from disk
-        loader = LoadConfiguration()
-        self.parameters, self.agconfig = loader.load_config("config/parameters.json")
-        self.weighting = self.parameters.get("Weighting", "A")
-
         # Setup serial-connected NSRT device
         await self.initialize_device()
 
-        # Start data agregation manager 
-        self.agmanager = AggregationManager(self.agconfig, self.mysql_manager.pool)
-        await self.agmanager.start()
         # Launch selected streams
         await self.start_handle_acquisition()
 
