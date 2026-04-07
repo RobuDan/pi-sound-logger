@@ -3,6 +3,7 @@ import logging
 from collections.abc import Awaitable, Callable
 from typing import Any
 
+from utils.json_config_loader import WeatherConfiguration
 
 class DeviceDocumentWatcher:
     def __init__(
@@ -16,6 +17,7 @@ class DeviceDocumentWatcher:
         self.device_id = device_id
         self.on_updated_parameters = on_updated_parameters
         self.on_audio_trigger = on_audio_trigger
+        self.weather_config = WeatherConfiguration()
 
     async def run(self) -> None:
         pipeline: list[dict[str, Any]] = [
@@ -45,6 +47,11 @@ class DeviceDocumentWatcher:
                         if self.on_audio_trigger:
                             logging.info(f"Detected change in audio_trigger: {new_trigger_value}")
                             await self.on_audio_trigger(new_trigger_value)
+                    
+                    if "noise_source_position" in updated_fields:
+                        new_position = updated_fields.get("noise_source_position")
+                        logging.info(f"Detected change in noise_source_position: {new_position}")
+                        self.weather_config.update_noise_source_position(new_position)
 
         except asyncio.CancelledError:
             logging.info("DeviceDocumentWatcher task was cancelled")
