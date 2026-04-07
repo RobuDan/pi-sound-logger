@@ -148,7 +148,7 @@ class AudioTransfer:
 
             if database_value is not None:
                 if database_value >= self.audio_trigger:
-                    #logging.info(f"Fetched value {database_value} meets or exceeds audio trigger {self.audio_trigger}")
+                    # logging.info(f"Fetched value {database_value} meets or exceeds audio trigger {self.audio_trigger}")
 
                     with open(filepath, 'rb') as file:
                         binary_data = file.read()  # Consider chunked reading if files are large
@@ -186,8 +186,6 @@ class AudioTransfer:
         await self.ensure_collection_exists()
         await self.initialize_audio_trigger()
 
-        watch_task = asyncio.create_task(self.watch_audio_trigger_changes())
-
         try:
             while True:
                 current_file_count = self.scan_directory()
@@ -208,23 +206,12 @@ class AudioTransfer:
             logging.error(f"Unexpected error in run method of AudioTransfer: {e}")
         except asyncio.CancelledError:
             logging.info("AudioTransfer task was cancelled")
-        finally:
-            watch_task.cancel()
-            #await self.stop()
 
-    async def watch_audio_trigger_changes(self):
-        """Monitor the 'audio_trigger' field for changes and update internally."""
-        try:
-            async with self.document_status.watch([
-                {'$match': {'documentKey._id': self.device_id, 'operationType': 'update', 'updateDescription.updatedFields.audio_trigger': {'$exists': True}}}
-            ]) as stream:
-                async for change in stream:
-                    new_trigger_value = change['updateDescription']['updatedFields'].get('audio_trigger')
-                    if new_trigger_value != self.audio_trigger:
-                        self.audio_trigger = new_trigger_value
-        except Exception as e:
-            logging.error(f"Error watching battery changes: {str(e)}")
-
+    async def update_audio_trigger(self, new_trigger_value):
+        """Recieve 'audio_trigger' field change and updates internally."""
+        if new_trigger_value != self.audio_trigger:
+            self.audio_trigger = new_trigger_value
+            
     async def stop(self):
         """Cleanly shut down the data transfer, ensuring all resources are properly released."""
         # Attempt to close the MongoDB client connection if had not already been closed

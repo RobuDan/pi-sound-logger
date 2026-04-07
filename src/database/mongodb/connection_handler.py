@@ -2,7 +2,7 @@ import asyncio
 from asyncio import Lock
 import logging
 from motor.motor_asyncio import AsyncIOMotorClient
-from pymongo.errors import ConnectionFailure
+from pymongo.errors import ConnectionFailure, ServerSelectionTimeoutError
 import aiohttp
 import aiomysql
 from contextlib import asynccontextmanager
@@ -56,9 +56,15 @@ class ConnectionHandler:
                 try:
                     if await self.check_internet_connectivity():
                         if self.client is None:
-                            self.client = AsyncIOMotorClient(self.mongo_url, maxPoolSize=120)
+                            self.client = AsyncIOMotorClient(
+                                self.mongo_url,
+                                maxPoolSize=120,
+                                serverSelectionTimeoutMS=3000,
+                                connectTimeoutMS=3000,
+                                socketTimeoutMS=3000,
+                            )
                         
-                        await asyncio.wait_for(self.client.admin.command('ping'), timeout=3)
+                        await self.client.admin.command("ping")
                         self.mongodb_connection_event.set()
                         if self.logs_mysql is not None and not self.shut_down:
                             await self.logs_mysql.insert_log_to_mysql(
@@ -71,11 +77,10 @@ class ConnectionHandler:
                             self.is_monitoring_active = True
                         return self.client
 
-                except TimeoutError:
-                    if self.shut_down:
-                        break
+                except (ServerSelectionTimeoutError, ConnectionFailure, Exception) as e:
+                    logging.error(f"MongoDB connection error: {e}")
+                    logging.error(f"MongoDB connection error repr: {repr(e)}")
 
-                except (ConnectionFailure, Exception) as e:
                     if self.logs_mysql is not None and not self.shut_down:
                         await self.logs_mysql.insert_log_to_mysql(
                             event_type='MongoDB Connection',
@@ -95,11 +100,16 @@ class ConnectionHandler:
             while not self.shut_down:
                 try:
                     #before timeout=0.5
-                    await asyncio.wait_for(self.client.admin.command('ping'), timeout=6)
+                    await self.client.admin.command("ping")
                     await asyncio.sleep(6)
                     
-                except (ConnectionFailure, asyncio.TimeoutError):
-                    logging.warning("Lost connection to MongoDB. Attempting to reconnect...")
+                except (ServerSelectionTimeoutError, ConnectionFailure, Exception) as e:
+                    logging.warning(
+                        f"Lost connection to MongoDB. Attempting to reconnect. "
+                        f"MongoDB error: {e}"
+                    )
+                    logging.warning(f"MongoDB reconnect error repr: {repr(e)}")
+
                     self.mongodb_connection_event.clear()
                     if self.client is not None:
                         self.client.close()

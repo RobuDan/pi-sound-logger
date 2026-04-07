@@ -42,7 +42,7 @@ class WeatherPoller:
 
             while self._running:
                 delay = self.timestamp_provider.delay_until_next_minute()
-                logging.info(f"Waiting {delay:.3f} seconds until next minute boundary")
+                # logging.info(f"Waiting {delay:.3f} seconds until next minute boundary")
                 await asyncio.sleep(delay)
 
                 if not self._running:

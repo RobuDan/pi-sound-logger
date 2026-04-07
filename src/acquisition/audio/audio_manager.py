@@ -136,6 +136,5 @@ class AudioManager:
         Stops the full acquisition manager and its subcomponents.
         """
 
-        await self.agmanager.stop()
         await self.cleanup_streams()
         logging.info("AcquisitionManager stopped.")

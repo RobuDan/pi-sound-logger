@@ -10,6 +10,7 @@ from pymongo.errors import BulkWriteError
 
 from .audio_transfer import AudioTransfer 
 from .microphone_details import MicrophoneDetails
+from .device_document_watcher import DeviceDocumentWatcher
 
 class DataSyncManager:
     def __init__(self, mysql_pool, device, mongodb_connection_event, data_base, connection_handler, data_base_status, callback):
@@ -24,6 +25,7 @@ class DataSyncManager:
         self.mysql_fetcher = None
         self.mongo_transfer = None
         self.microphone_details = None
+        self.device_document_watcher = None
         self.data_base_status = data_base_status
         self.callback = callback
         self.tasks = []
@@ -57,11 +59,19 @@ class DataSyncManager:
                     self.mongo_transfer = MongoDBDataTransfer(self.mongo_client, self.data_queue, self.data_base, self.status_queue)  # Recreate the transfer with the new queue
                     self.audio_transfer = AudioTransfer(self.mongo_client, self.mysql_pool, self.data_base, self.data_base_status,)
                     self.microphone_details = MicrophoneDetails(self.device, self.mongo_client, self.data_base_status, self.callback)
+                    self.device_document_watcher = DeviceDocumentWatcher(
+                        collection=self.microphone_details.db[self.microphone_details.collection_name],
+                        device_id=self.microphone_details.device_id,
+                        on_updated_parameters=self.microphone_details.process_updated_parameters,
+                        on_audio_trigger=self.audio_transfer.update_audio_trigger,
+                    )
+
                     self.tasks = [
                         asyncio.create_task(self.mysql_fetcher.run()),
                         asyncio.create_task(self.mongo_transfer.run()),
                         asyncio.create_task(self.audio_transfer.run()),
-                        asyncio.create_task(self.microphone_details.run())
+                        asyncio.create_task(self.microphone_details.run()),
+                        asyncio.create_task(self.device_document_watcher.run()),
                     ]
                     logging.info("Tasks started: MySQL fetching and MongoDB transferring.")
 

@@ -83,6 +83,7 @@ class MicrophoneDetails:
                 },
                 "parameters": self.parameters,
                 "audio_trigger": 70,
+                "noise_source_position": None,
                 "updated_parameters": {
                     "AcousticSequences": None,
                     "SpectrumSequences": None,
@@ -251,28 +252,10 @@ class MicrophoneDetails:
         except Exception as e:
             logging.error(f"Error updating device document in function update_parameters: {str(e)}")
 
-    async def watch_document_for_parameters_change(self):
-        """Watch for changes to the updated_parameters in the document."""
-        pipeline = [
-            {
-                '$match': {
-                    'documentKey._id': self.device_id,
-                    'operationType': 'update',
-                    'updateDescription.updatedFields.updated_parameters': {'$exists': True}  # Watching for changes in updated_parameters
-                }
-            }
-        ]
-        try:
-            async with self.db[self.collection_name].watch(pipeline) as stream:
-                async for change in stream:
-                    updated_params = change['updateDescription']['updatedFields'].get('updated_parameters')
-                    if updated_params:
-                        logging.info(f"Detected change in updated_parameters: {updated_params}")
-                        await self.update_parameters(updated_params)
-                        await self.reset_updated_parameters(updated_params)
-                        #await self.handle_updated_parameters(updated_params)
-        except Exception as e:
-            logging.error(f"Error watching battery changes: {str(e)}")
+    async def process_updated_parameters(self, updated_params):
+        """Recieve 'audio_parameters' field change and updates internal"""
+        await self.update_parameters(updated_params)
+        await self.reset_updated_parameters(updated_params)
 
     async def run(self):
         await self.ensure_collection_exists()
@@ -282,7 +265,6 @@ class MicrophoneDetails:
 
         try:
             await self.create_initial_device_document()
-            watcher_task = asyncio.create_task(self.watch_document_for_parameters_change())
             while True:
                 await self.fetch_and_update_microphone_status()
                 await asyncio.sleep(25)
@@ -290,8 +272,4 @@ class MicrophoneDetails:
             logging.error(f"Unexpected error in run method of StatusMicrophone: {e}")
         except asyncio.CancelledError:
             logging.info("StatusMicrohpone task was cancelled")
-        finally:
-
-            if watcher_task:
-                watcher_task.cancel()
                 
