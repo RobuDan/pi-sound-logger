@@ -62,10 +62,10 @@ class WeatherPoller:
         fetch_time: datetime = self.timestamp_provider.now()
         save_time: datetime = self.timestamp_provider.previous_minute(fetch_time)
 
-        logging.info(
-            f"Fetching weather data | fetch_time={fetch_time.isoformat(timespec='seconds')} "
-            f"| save_time={save_time.isoformat(timespec='seconds')}"
-        )
+        # logging.info(
+        #     f"Fetching weather data | fetch_time={fetch_time.isoformat(timespec='seconds')} "
+        #     f"| save_time={save_time.isoformat(timespec='seconds')}"
+        # )
 
         weather_data: dict[str, Any] | None = await self._fetch_weather_data()
 
@@ -91,7 +91,7 @@ class WeatherPoller:
     ) -> None:
         mysql_timestamp = self.timestamp_provider.to_mysql_timestamp(save_time)
 
-        logging.info(f"Storing weather data in MySQL | save_time={mysql_timestamp} and {weather_data}")
+        # logging.info(f"Storing weather data in MySQL | save_time={mysql_timestamp} and {weather_data}")
 
         await self.db_manager.insert_weather1min(
             timestamp=mysql_timestamp,
