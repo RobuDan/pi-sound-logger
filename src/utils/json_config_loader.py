@@ -152,7 +152,7 @@ class WeatherConfiguration:
         if data.get("noise_source_position") == validated_value:
             return
 
-        data["noise_source_position"] = value
+        data["noise_source_position"] = validated_value
 
         self._write(data)
 

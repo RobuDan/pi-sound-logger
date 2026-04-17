@@ -51,7 +51,7 @@ class AggregationManager:
                     self.aggregators.append(aggregator)
 
                     if param == "LAeq":
-                        incert_calc = IncertitudeCalculator(param, self.connection_pool, self.time_manager)
+                        incert_calc = IncertitudeCalculator(param, self.connection_pool, self.time_manager, self.weather_enabled)
                         self.aggregators.append(incert_calc)
 
                         

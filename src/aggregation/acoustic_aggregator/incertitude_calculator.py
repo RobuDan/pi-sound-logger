@@ -11,19 +11,60 @@ from datetime import timedelta, datetime
 from collections import defaultdict
 
 from .value_aggregator import ValueAggregator
+from utils.json_config_loader import WeatherConfiguration
+from ..weather_aggregator.weather_incertitude_calculator import WeatherIncertitudeCalculator
+from utils.env_config_loader import Config
 
+data_retention_days = Config.MYSQL_DATA_RETENTION
 
 class IncertitudeCalculator(ValueAggregator):
-    def __init__(self, param, connection_pool, time_manager):
+    def __init__(self, param, connection_pool, time_manager, weather_enabled=False):
         super().__init__(param, connection_pool, time_manager)
         self.db_name = param
+        self.weather_enabled = weather_enabled
+        self.weather_config = WeatherConfiguration()
         self.subscribe_to_intervals(['24h'])  # Keep '1min' only for testing if needed
         logging.info("[Incertitude] Subscribed to intervals.")
 
     async def notifyAboutInterval(self, interval, start_time, end_time):
         """ Starts with safety wait of 25 seconds."""
+        await asyncio.sleep(25) # Safety wait so all data is populated
 
-        # Fetch precomputed values
+        # decide who is gonna perform the computation
+        noise_source_position = self.weather_config.get_noise_source_position()
+
+        if self.weather_enabled and noise_source_position:
+            weather_incertitude_calculator = WeatherIncertitudeCalculator(
+                acoustic_db_name=self.db_name,
+                connection_pool=self.connection_pool,
+                start_time=start_time,
+                end_time=end_time,
+                noise_source_position=noise_source_position,
+            )
+            result = await weather_incertitude_calculator.compute_weather_uncertainty()
+            if result is None:
+                logging.warning("[Incertitude] Weather uncertainty computation failed.")
+                return
+            lday_ref, uday_ref, levening_ref, uevening_ref, lnight_ref, unight_ref = result
+            
+            lden, u_lden = self.compute_lden_uncertainty(
+                lday_ref, uday_ref,
+                levening_ref, uevening_ref,
+                lnight_ref, unight_ref
+                )
+            logging.info(
+                f"[Incertitude] Weather U(Lden) = ±{u_lden:.2f} dB | "
+                f"lday_ref={lday_ref}, uday_ref={uday_ref}, "
+                f"levening_ref={levening_ref}, uevening_ref={uevening_ref}, "
+                f"lnight_ref={lnight_ref}, unight_ref={unight_ref}"
+            )
+            await self.insert_lden_uncertainty(self.db_name, "U_Lden", start_time, lden, u_lden)
+            return
+        
+        await self.compute_standard_uncertainty(start_time, end_time)
+
+
+    async def compute_standard_uncertainty(self, start_time, end_time):
         lday, levening, lnight = await self.fetch_lden_components(
             self.db_name, table_name="Lden", timestamp=start_time
         )
@@ -38,14 +79,14 @@ class IncertitudeCalculator(ValueAggregator):
         lnight_ref, unight_ref = await self.compute_lnight_temporal_uncertainty(self.db_name, start_time, end_time, lnight, uncertainty=0.6)
 
         # Final U(Lden)
-        u_lden = self.compute_lden_uncertainty(
+        lden, u_lden = self.compute_lden_uncertainty(
             lday_ref, uday_ref,
             levening_ref, uevening_ref,
             lnight_ref, unight_ref
         )
 
         logging.info(f"[Incertitude] U(Lden) = ±{u_lden:.2f} dB")
-        await self.insert_aggregated_value(self.db_name, "U_Lden", start_time, u_lden)
+        await self.insert_lden_uncertainty(self.db_name, "U_Lden", start_time, lden, u_lden)
     
     async def compute_lday_temporal_uncertainty(self, db_name, start_time, end_time, lday, uncertainty):
         """
@@ -103,7 +144,7 @@ class IncertitudeCalculator(ValueAggregator):
         group_datetimes = {
             name: (
                 start_time.replace(hour=start_h, minute=0, second=0),
-                start_time.replace(hour=start_h, minute=45, second=0)
+                start_time.replace(hour=end_h, minute=0, second=0)
             )
             for name, (start_h, end_h) in GROUP_INTERVALS.items()
         }
@@ -131,19 +172,19 @@ class IncertitudeCalculator(ValueAggregator):
         group_datetimes = {
             "G1_23to01": (
                 (start_time - timedelta(days=1)).replace(hour=23, minute=0, second=0),
-                start_time.replace(hour=0, minute=45, second=0)
+                start_time.replace(hour=1, minute=0, second=0)
             ),
             "G2_01to03": (
                 start_time.replace(hour=1, minute=0, second=0),
-                start_time.replace(hour=2, minute=45, second=0)
+                start_time.replace(hour=3, minute=0, second=0)
             ),
             "G3_03to05": (
                 start_time.replace(hour=3, minute=0, second=0),
-                start_time.replace(hour=4, minute=45, second=0)
+                start_time.replace(hour=5, minute=0, second=0)
             ),
             "G4_05to07": (
                 start_time.replace(hour=5, minute=0, second=0),
-                start_time.replace(hour=6, minute=45, second=0)
+                start_time.replace(hour=7, minute=0, second=0)
             ),
         }
 
@@ -183,8 +224,15 @@ class IncertitudeCalculator(ValueAggregator):
             count = len(values)
 
             uk, enav = self.compute_group_uncertainty(values, count)
+
             lres = self.compute_l90_from_group(p_values)
-            lk, u_k_prime, ures, cl_prime, cl_res, ulk, weighted_energy = self.compute_expanded_uncertainty(enav, uk, count, lres)
+            expanded = self.compute_expanded_uncertainty(enav, uk, count, lres)
+            if expanded is None:
+                logging.warning(
+                    f"Aborting uncertainty: expanded uncertainty failed in group {group_name}"
+                )
+
+            lk, u_k_prime, ures, cl_prime, cl_res, ulk, weighted_energy = expanded
 
             grouped_result[group_name] = {
                 'values': values,
@@ -371,6 +419,10 @@ class IncertitudeCalculator(ValueAggregator):
         B = 4 * 10 ** (0.1 * (levening_ref + 5))
         C = 8 * 10 ** (0.1 * (lnight_ref + 10))
 
+        total_energy = A + B + C
+
+        lden = 10 * math.log10(total_energy / 24)
+
         # Numerator: sum of squared energy-weighted uncertainties
         numerator = math.sqrt(
             (A ** 2) * (uday_ref ** 2) +
@@ -378,11 +430,8 @@ class IncertitudeCalculator(ValueAggregator):
             (C ** 2) * (unight_ref ** 2)
         )
 
-        # Denominator: total energy sum
-        denominator = A + B + C
-
-        u_lden = numerator / denominator
-        return round(u_lden, 2)
+        u_lden = numerator / total_energy
+        return round(lden, 2), round(u_lden, 2)
 
     async def fetch_lden_components(self, db_name, table_name, timestamp):
         """
@@ -405,6 +454,54 @@ class IncertitudeCalculator(ValueAggregator):
                     return None, None, None
 
                 return row[0], row[1], row[2]
+
+    async def insert_lden_uncertainty(self, db_name, table_name, start_time, lden, u_lden):
+        await self._create_u_lden_table_if_not_exists(db_name, table_name)
+
+        async with self.connection_pool.acquire() as conn:
+            await conn.select_db(db_name)
+            async with conn.cursor() as cur:
+                insert_sql = f"""
+                INSERT INTO `{table_name}` 
+                (timestamp, lden, u_lden, is_sent, is_aggregated) 
+                VALUES (%s, %s, %s, %s, %s);
+                """
+                await cur.execute(insert_sql, (start_time, lden, u_lden, 0, 0))
+                await conn.commit()
+
+
+    async def _create_u_lden_table_if_not_exists(self, db_name, table_name):
+        async with self.connection_pool.acquire() as conn:
+            await conn.select_db(db_name)
+            async with conn.cursor() as cur:
+                # Create the table if it does not exist
+                create_table_sql = f"""
+                CREATE TABLE IF NOT EXISTS `{table_name}` (
+                    id INT PRIMARY KEY AUTO_INCREMENT,
+                    timestamp TIMESTAMP NOT NULL,
+                    lden FLOAT NOT NULL,
+                    u_lden FLOAT NOT NULL,
+                    is_sent TINYINT NOT NULL DEFAULT 0,
+                    is_aggregated TINYINT NOT NULL DEFAULT 0,
+                    INDEX idx_timestamp (timestamp),
+                    INDEX idx_is_sent (is_sent),
+                    INDEX idx_is_aggregated (is_aggregated),
+                    INDEX idx_is_sent_is_aggregated (is_sent, is_aggregated)
+                );
+                """
+                await cur.execute(create_table_sql)
+
+                # Add event for deleting old records every 1 day, entries older config days
+                create_event_sql = f"""
+                CREATE EVENT IF NOT EXISTS `ev_delete_old_data_{table_name}`
+                ON SCHEDULE EVERY 1 DAY
+                DO
+                    DELETE FROM `{table_name}`
+                    WHERE timestamp < NOW() - INTERVAL {data_retention_days} DAY;
+                """
+                await cur.execute(create_event_sql)
+                await conn.commit()
+
 
     async def aggregate(self):
         #Empty function
