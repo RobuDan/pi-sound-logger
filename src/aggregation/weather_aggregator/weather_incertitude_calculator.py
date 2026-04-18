@@ -50,13 +50,15 @@ class WeatherIncertitudeCalculator:
 
         logging.info(
             f"[WeatherIncertitude][{period}] Grouped values summary: "
-            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps']} for k, v in groups.items()} }"
+            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values':v["values"]} for k, v in groups.items()} }"
         )
 
         grouped_result = await self.compute_group_components(groups, period, step, total_expected_count=12)
         if grouped_result is None:
             logging.warning("[WeatherIncertitude] Aborting Lday: could not compute grouped result.")
             return None, None
+
+        logging.info(f"Lday group: {grouped_result}")
 
         lday = 10 * math.log10(sum(g["weighted_energy"] for g in grouped_result.values()))
         logging.info(f"[WeatherIncertitude][{period}] Computed lday from grouped energies: lday={round(lday, 2)}")
@@ -74,16 +76,24 @@ class WeatherIncertitudeCalculator:
         end_interval = self.start_time.replace(hour=23, minute=0, second=0)
 
         acoustic_map, weather_map, expected_timestamps = await self.fetch_interval_data(source_acoustic_table, source_weather_table, start_interval, end_interval, step)
+        
         groups = group_values_by_weather_window(acoustic_map, weather_map, expected_timestamps, self.noise_source_position, period)
         if groups is None:
             logging.warning("[WeatherIncertitude] Aborting Levening: missing acoustic/weather data or invalid window classification.")
             return None, None
+
+        logging.info(
+            f"[WeatherIncertitude][{period}] Grouped values summary: "
+            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values':v["values"]} for k, v in groups.items()} }"
+        )
 
         grouped_result = await self.compute_group_components(groups, period, step, total_expected_count=16)
         if grouped_result is None:
             logging.warning("[WeatherIncertitude] Aborting Levening: could not compute grouped result.")
             return None, None
         
+        logging.info(f"Levening group: {grouped_result}")
+
         levening = 10 * math.log10(sum(g["weighted_energy"] for g in grouped_result.values()))
         logging.info(f"[WeatherIncertitude][{period}] Computed levening from grouped energies: levening={round(levening, 2)}")
 
@@ -104,12 +114,19 @@ class WeatherIncertitudeCalculator:
         groups = group_values_by_weather_window(acoustic_map, weather_map, expected_timestamps, self.noise_source_position, period)
         if groups is None:
             logging.warning("[WeatherIncertitude] Aborting Lnight: missing acoustic/weather data or invalid window classification.")
-            return None, None
+            return None, None   
+        
+        logging.info(
+                f"[WeatherIncertitude][{period}] Grouped values summary: "
+                f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values':v["values"]} for k, v in groups.items()} }"
+            )
 
         grouped_result = await self.compute_group_components(groups, period, step, total_expected_count=16)
         if grouped_result is None:
             logging.warning("[WeatherIncertitude] Aborting Lnight: could not compute grouped result.")
             return None, None
+
+        logging.info(f"Lnight group: {grouped_result}")
 
         lnight = 10 * math.log10(sum(g["weighted_energy"] for g in grouped_result.values()))
         logging.info(f"[WeatherIncertitude][{period}] Computed lnight from grouped energies: lnight={round(lnight, 2)}")

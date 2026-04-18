@@ -112,7 +112,7 @@ class IncertitudeCalculator(ValueAggregator):
         }
 
         grouped_result = await self.compute_groups_components(db_name, source_table_name, start_time, group_datetimes)
-        logging.info(f'{grouped_result}')
+        # logging.info(f'{grouped_result}')
         if grouped_result is None or len(grouped_result) < 4:
             logging.warning("[U(Lday)] Not all 4 groups available. Aborting.")
             return
