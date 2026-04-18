@@ -50,7 +50,7 @@ class WeatherIncertitudeCalculator:
 
         logging.info(
             f"[WeatherIncertitude][{period}] Grouped values summary: "
-            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values':v["values"]} for k, v in groups.items()} }"
+            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values': v['values']} for k, v in groups.items()} }"
         )
 
         grouped_result = await self.compute_group_components(groups, period, step, total_expected_count=12)
@@ -84,7 +84,7 @@ class WeatherIncertitudeCalculator:
 
         logging.info(
             f"[WeatherIncertitude][{period}] Grouped values summary: "
-            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values':v["values"]} for k, v in groups.items()} }"
+            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values': v['values']} for k, v in groups.items()} }"
         )
 
         grouped_result = await self.compute_group_components(groups, period, step, total_expected_count=16)
@@ -117,9 +117,9 @@ class WeatherIncertitudeCalculator:
             return None, None   
         
         logging.info(
-                f"[WeatherIncertitude][{period}] Grouped values summary: "
-                f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values':v["values"]} for k, v in groups.items()} }"
-            )
+            f"[WeatherIncertitude][{period}] Grouped values summary: "
+            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values': v['values']} for k, v in groups.items()} }"
+        )
 
         grouped_result = await self.compute_group_components(groups, period, step, total_expected_count=16)
         if grouped_result is None:
