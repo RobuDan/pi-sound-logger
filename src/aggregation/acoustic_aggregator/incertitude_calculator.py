@@ -27,8 +27,8 @@ class IncertitudeCalculator(ValueAggregator):
         logging.info("[Incertitude] Subscribed to intervals.")
 
     async def notifyAboutInterval(self, interval, start_time, end_time):
-        """ Starts with safety wait of 25 seconds."""
-        await asyncio.sleep(25) # Safety wait so all data is populated
+        """ Starts with safety wait of 10 seconds."""
+        await asyncio.sleep(10) # Safety wait so all data is populated
 
         # decide who is gonna perform the computation
         noise_source_position = self.weather_config.get_noise_source_position()
@@ -53,7 +53,7 @@ class IncertitudeCalculator(ValueAggregator):
                 lnight_ref, unight_ref
                 )
             logging.info(
-                f"[Incertitude] Weather U(Lden) = ±{u_lden:.2f} dB | "
+                f"[Incertitude] Weather Lden={lden:.2f} dB | U(Lden) = ±{u_lden:.2f} dB | "
                 f"lday_ref={lday_ref}, uday_ref={uday_ref}, "
                 f"levening_ref={levening_ref}, uevening_ref={uevening_ref}, "
                 f"lnight_ref={lnight_ref}, unight_ref={unight_ref}"
@@ -85,7 +85,7 @@ class IncertitudeCalculator(ValueAggregator):
             lnight_ref, unight_ref
         )
 
-        logging.info(f"[Incertitude] U(Lden) = ±{u_lden:.2f} dB")
+        logging.info(f"[Incertitude] Lden={lden:.2f} dB | U(Lden) = ±{u_lden:.2f} dB")
         await self.insert_lden_uncertainty(self.db_name, "U_Lden", start_time, lden, u_lden)
     
     async def compute_lday_temporal_uncertainty(self, db_name, start_time, end_time, lday, uncertainty):

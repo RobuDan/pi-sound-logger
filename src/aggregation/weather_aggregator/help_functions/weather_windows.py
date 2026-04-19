@@ -94,7 +94,7 @@ def group_values_by_weather_window(acoustic_map, weather_map, expected_timestamp
             logging.warning(f"[WeatherIncertitude] Could not classify window at {ts}")
             return None
 
-        groups[window].append(value)
+        groups[window]["values"].append(value)
         groups[window]["timestamps"].append(ts)
 
     return groups
