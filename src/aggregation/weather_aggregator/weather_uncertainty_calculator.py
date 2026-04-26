@@ -7,7 +7,7 @@ from .help_functions.queries import fetch_acoustic_data, fetch_weather_data, fet
 from .help_functions.weather_windows import build_expected_timestamps, group_values_by_weather_window
 
 
-class WeatherIncertitudeCalculator:
+class WeatherUncertaintyCalculator:
     def __init__(self, acoustic_db_name, connection_pool, start_time, end_time, noise_source_position):
         self.acoustic_db_name = acoustic_db_name
         self.weather_db_name = "weather"
@@ -17,21 +17,29 @@ class WeatherIncertitudeCalculator:
         self.noise_source_position = noise_source_position
 
     async def compute_weather_uncertainty(self):
-        lday_ref, uday_ref = await self.compute_lday_temporal_uncertainty(uncertainty=1)
-        logging.info(f"[WeatherIncertitude] Lday result: lday_ref={lday_ref}, uday_ref={uday_ref}")
+        lday, lday_ref, uday_ref = await self.compute_lday_temporal_uncertainty(uncertainty=1)
+        logging.info(f"[WeatherUncertainty] Lday result: lday_ref={lday_ref}, uday_ref={uday_ref}")
 
-        levening_ref, uevening_ref = await self.compute_levening_temporal_uncertainty(uncertainty=0.8)
-        logging.info(f"[WeatherIncertitude] Levening result: levening_ref={levening_ref}, uevening_ref={uevening_ref}")
+        levening, levening_ref, uevening_ref = await self.compute_levening_temporal_uncertainty(uncertainty=0.8)
+        logging.info(f"[WeatherUncertainty] Levening result: levening_ref={levening_ref}, uevening_ref={uevening_ref}")
 
-        lnight_ref, unight_ref = await self.compute_lnight_temporal_uncertainty(uncertainty=0.6)
-        logging.info(f"[WeatherIncertitude] Lnight result: lnight_ref={lnight_ref}, unight_ref={unight_ref}")
+        lnight, lnight_ref, unight_ref = await self.compute_lnight_temporal_uncertainty(uncertainty=0.6)
+        logging.info(f"[WeatherUncertainty] Lnight result: lnight_ref={lnight_ref}, unight_ref={unight_ref}")
 
-        if None in (lday_ref, uday_ref, levening_ref, uevening_ref, lnight_ref, unight_ref):
-            logging.warning("[WeatherIncertitude] Aborting final weather result: one or more period results are missing.")
+        if None in (
+            lday, lday_ref, uday_ref,
+            levening, levening_ref, uevening_ref,
+            lnight, lnight_ref, unight_ref,
+        ):
+            logging.warning("[WeatherUncertainty] Aborting final weather result: one or more period results are missing.")
             return None
 
-        return lday_ref, uday_ref, levening_ref, uevening_ref, lnight_ref, unight_ref
- 
+        return (
+            lday, lday_ref, uday_ref,
+            levening, levening_ref, uevening_ref,
+            lnight, lnight_ref, unight_ref,
+        )
+    
     async def compute_lday_temporal_uncertainty(self, uncertainty=1):
         source_acoustic_table = "LAeq1h"
         source_weather_table = "weather1h"
@@ -45,26 +53,26 @@ class WeatherIncertitudeCalculator:
 
         groups = group_values_by_weather_window(acoustic_map, weather_map, expected_timestamps, self.noise_source_position, period)
         if groups is None:
-            logging.warning("[WeatherIncertitude] Aborting Lday: missing acoustic/weather data or invalid window classification.")
-            return None, None
+            logging.warning("[WeatherUncertainty] Aborting Lday: missing acoustic/weather data or invalid window classification.")
+            return None, None, None
 
         logging.info(
-            f"[WeatherIncertitude][{period}] Grouped values summary: "
-            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values': v['values']} for k, v in groups.items()} }"
+            f"[WeatherUncertainty][{period}] Grouped values summary: "
+            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps']} for k, v in groups.items()} }"
         )
 
         grouped_result = await self.compute_group_components(groups, period, step, total_expected_count=12)
         if grouped_result is None:
-            logging.warning("[WeatherIncertitude] Aborting Lday: could not compute grouped result.")
-            return None, None
+            logging.warning("[WeatherUncertainty] Aborting Lday: could not compute grouped result.")
+            return None, None, None
 
         logging.info(f"Lday group: {grouped_result}")
 
         lday = 10 * math.log10(sum(g["weighted_energy"] for g in grouped_result.values()))
-        logging.info(f"[WeatherIncertitude][{period}] Computed lday from grouped energies: lday={round(lday, 2)}")
+        logging.info(f"[WeatherUncertainty][{period}] Computed lday from grouped energies: lday={round(lday, 2)}")
         
         lday_ref, uday_ref, _, _ = self.compute_final_uncertainty_interval(grouped_result, lday, uncertainty)
-        return lday_ref, uday_ref
+        return lday, lday_ref, uday_ref
 
     async def compute_levening_temporal_uncertainty(self, uncertainty=0.8):
         source_acoustic_table = "LAeq15min"
@@ -79,26 +87,26 @@ class WeatherIncertitudeCalculator:
         
         groups = group_values_by_weather_window(acoustic_map, weather_map, expected_timestamps, self.noise_source_position, period)
         if groups is None:
-            logging.warning("[WeatherIncertitude] Aborting Levening: missing acoustic/weather data or invalid window classification.")
-            return None, None
+            logging.warning("[WeatherUncertainty] Aborting Levening: missing acoustic/weather data or invalid window classification.")
+            return None, None, None
 
         logging.info(
-            f"[WeatherIncertitude][{period}] Grouped values summary: "
-            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values': v['values']} for k, v in groups.items()} }"
+            f"[WeatherUncertainty][{period}] Grouped values summary: "
+            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps']} for k, v in groups.items()} }"
         )
 
         grouped_result = await self.compute_group_components(groups, period, step, total_expected_count=16)
         if grouped_result is None:
-            logging.warning("[WeatherIncertitude] Aborting Levening: could not compute grouped result.")
-            return None, None
+            logging.warning("[WeatherUncertainty] Aborting Levening: could not compute grouped result.")
+            return None, None, None
         
         logging.info(f"Levening group: {grouped_result}")
 
         levening = 10 * math.log10(sum(g["weighted_energy"] for g in grouped_result.values()))
-        logging.info(f"[WeatherIncertitude][{period}] Computed levening from grouped energies: levening={round(levening, 2)}")
+        logging.info(f"[WeatherUncertainty][{period}] Computed levening from grouped energies: levening={round(levening, 2)}")
 
         levening_ref, uevening_ref, _, _ = self.compute_final_uncertainty_interval(grouped_result, levening, uncertainty)
-        return levening_ref, uevening_ref
+        return levening, levening_ref, uevening_ref
 
     async def compute_lnight_temporal_uncertainty(self, uncertainty=0.6):
         source_acoustic_table = "LAeq30min"
@@ -113,26 +121,26 @@ class WeatherIncertitudeCalculator:
 
         groups = group_values_by_weather_window(acoustic_map, weather_map, expected_timestamps, self.noise_source_position, period)
         if groups is None:
-            logging.warning("[WeatherIncertitude] Aborting Lnight: missing acoustic/weather data or invalid window classification.")
-            return None, None   
+            logging.warning("[WeatherUncertainty] Aborting Lnight: missing acoustic/weather data or invalid window classification.")
+            return None, None, None 
         
         logging.info(
-            f"[WeatherIncertitude][{period}] Grouped values summary: "
-            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps'], 'values': v['values']} for k, v in groups.items()} }"
+            f"[WeatherUncertainty][{period}] Grouped values summary: "
+            f"{ {k: {'count': len(v['values']), 'timestamps': v['timestamps']} for k, v in groups.items()} }"
         )
 
         grouped_result = await self.compute_group_components(groups, period, step, total_expected_count=16)
         if grouped_result is None:
-            logging.warning("[WeatherIncertitude] Aborting Lnight: could not compute grouped result.")
-            return None, None
+            logging.warning("[WeatherUncertainty] Aborting Lnight: could not compute grouped result.")
+            return None, None, None
 
         logging.info(f"Lnight group: {grouped_result}")
 
         lnight = 10 * math.log10(sum(g["weighted_energy"] for g in grouped_result.values()))
-        logging.info(f"[WeatherIncertitude][{period}] Computed lnight from grouped energies: lnight={round(lnight, 2)}")
+        logging.info(f"[WeatherUncertainty][{period}] Computed lnight from grouped energies: lnight={round(lnight, 2)}")
 
         lnight_ref, unight_ref, _, _ = self.compute_final_uncertainty_interval(grouped_result, lnight, uncertainty)
-        return lnight_ref, unight_ref
+        return lnight, lnight_ref, unight_ref
 
     async def fetch_interval_data(self, source_acoustic_table, source_weather_table, start_interval, end_interval, step):
         acoustic_map = await fetch_acoustic_data(self.connection_pool, self.acoustic_db_name, source_acoustic_table, start_interval, end_interval)
@@ -150,7 +158,7 @@ class WeatherIncertitudeCalculator:
 
             # Skip completely empty groups
             if not values:
-                logging.info(f"[WeatherIncertitude] Skipping empty group {group_name}")
+                logging.info(f"[WeatherUncertainty] Skipping empty group {group_name}")
                 continue
 
             count = len(values)
@@ -159,24 +167,24 @@ class WeatherIncertitudeCalculator:
             uk, enav = self.compute_group_uncertainty(values, count)
 
             if enav is None:
-                logging.warning(f"[WeatherIncertitude] Invalid enav in group {group_name}")
+                logging.warning(f"[WeatherUncertainty] Invalid enav in group {group_name}")
                 continue
 
             # Fetch LAF (numpy array already)
             p_values = await self.fetch_laf_values_for_group_timestamps(timestamps, step)
             if p_values is None:
-                logging.warning(f"[WeatherIncertitude] Missing LAF for group {group_name}")
+                logging.warning(f"[WeatherUncertainty] Missing LAF for group {group_name}")
                 continue
 
             lres = self.compute_l90_from_group(p_values)
             if lres is None:
-                logging.warning(f"[WeatherIncertitude] Invalid lres in group {group_name}")
+                logging.warning(f"[WeatherUncertainty] Invalid lres in group {group_name}")
                 continue
 
             result = self.compute_expanded_uncertainty(enav, uk, count, lres, pk)
 
             if result is None:
-                logging.warning(f"[WeatherIncertitude] Failed expanded uncertainty for {group_name}")
+                logging.warning(f"[WeatherUncertainty] Failed expanded uncertainty for {group_name}")
                 continue
 
             lk, u_k_prime, ures, cl_prime, cl_res, ulk, weighted_energy = result
@@ -198,7 +206,7 @@ class WeatherIncertitudeCalculator:
             }
 
         if not grouped_result:
-            logging.warning(f"[WeatherIncertitude] No valid groups for {period}")
+            logging.warning(f"[WeatherUncertainty] No valid groups for {period}")
             return None
 
         return grouped_result
@@ -212,7 +220,7 @@ class WeatherIncertitudeCalculator:
             arr = await fetch_laf_data(self.connection_pool, "LAF", "LAF", ts, end_ts)
 
             if arr is None:
-                logging.warning(f"[WeatherIncertitude] Missing LAF data for interval {ts} -> {end_ts}")
+                logging.warning(f"[WeatherUncertainty] Missing LAF data for interval {ts} -> {end_ts}")
                 return None
 
             arrays.append(arr)
@@ -249,7 +257,7 @@ class WeatherIncertitudeCalculator:
         total_energy = sum(g['weighted_energy'] for g in grouped_result.values())
 
         if total_energy <= 0:
-            logging.warning("[WeatherIncertitude] Invalid total_energy <= 0 in final uncertainty interval.")
+            logging.warning("[WeatherUncertainty] Invalid total_energy <= 0 in final uncertainty interval.")
             return None, None, None, None
 
         # Step 2: Contribution fractions (normalized)
