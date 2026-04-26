@@ -4,7 +4,7 @@ import logging
 import importlib
 
 from .time_manager import TimeManager
-from .acoustic_aggregator.incertitude_calculator import IncertitudeCalculator
+from .acoustic_aggregator.uncertainty_calculator import UncertaintyCalculator
 
 class AggregationManager:
     def __init__(self, config, connection_pool):
@@ -43,7 +43,7 @@ class AggregationManager:
                     self.aggregators.append(aggregator)
 
                     if param == "LAeq":
-                        incert_calc = IncertitudeCalculator(param, self.connection_pool, self.time_manager)
+                        incert_calc = UncertaintyCalculator(param, self.connection_pool, self.time_manager)
                         self.aggregators.append(incert_calc)
 
                         

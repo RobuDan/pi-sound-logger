@@ -24,7 +24,7 @@ class ValueAggregator(BaseAggregator):
                 await conn.select_db(db_name)  # Select the specific database
                 async with conn.cursor() as cur:
                     fetch_sql = f"""
-                    SELECT value FROM `{table_name}` WHERE timestamp >= %s AND timestamp <= %s;
+                    SELECT value FROM `{table_name}` WHERE timestamp >= %s AND timestamp < %s;
                     """
                     await cur.execute(fetch_sql, (start_time, end_time))
                     rows = await cur.fetchall()
