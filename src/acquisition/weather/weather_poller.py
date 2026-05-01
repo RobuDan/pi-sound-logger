@@ -12,6 +12,7 @@ from typing import Any
 from acquisition.help_functions.timestamp_provider import TimestampProvider
 from .weather_client import WeatherClient
 from utils.env_config_loader import Config
+from utils.json_config_loader import WeatherConfiguration
 
 class WeatherPoller:
     def __init__(
@@ -23,7 +24,7 @@ class WeatherPoller:
         self.client = client
         self.mysql_pool = mysql_pool
         self.timestamp_provider = timestamp_provider
-
+        self.weather_config = WeatherConfiguration()
 
         self.db_manager = DatabaseManagerWeather(self.mysql_pool)
 
@@ -70,11 +71,21 @@ class WeatherPoller:
         weather_data: dict[str, Any] | None = await self._fetch_weather_data()
 
         if weather_data is None:
+            self.weather_config.update_status(status="Inactive")
+
             logging.warning(
                 f"No weather data returned for minute "
                 f"{save_time.isoformat(timespec='seconds')}"
             )
             return
+
+        # Only update last_data_time when data is successfully fetched
+        last_data_time = self.timestamp_provider.to_mysql_timestamp(save_time)
+
+        self.weather_config.update_status(
+            status="Active",
+            last_data_time=last_data_time,
+        )
 
         await self._insert_weather_data(
             weather_data=weather_data,

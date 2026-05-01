@@ -84,7 +84,9 @@ class WeatherConfiguration:
     Handles reading and writing runtime weather-related configuration
     stored locally in config/weather.json.
     """
+
     VALID_POSITIONS = {"N", "S", "E", "W"}
+    VALID_STATUSES = {"Active", "Inactive"}
 
     def __init__(self, path="config/weather.json"):
         self.path = path
@@ -133,6 +135,19 @@ class WeatherConfiguration:
         )
         return None
     
+    def _validate_status(self, value):
+        """
+        Ensures status is one of the allowed weather states.
+        """
+        if isinstance(value, str):
+            value = value.title().strip()
+
+            if value in self.VALID_STATUSES:
+                return value
+
+        logging.warning(f"Ignoring invalid weather status value: {value}")
+        return None
+    
     def get_noise_source_position(self):
         """
         Returns the current noise source position.
@@ -140,6 +155,21 @@ class WeatherConfiguration:
         data = self._read()
         return data.get("noise_source_position")
 
+    def get_status(self):
+        """
+        Returns the current weather station status.
+        Defaults to inactive if no status exists.
+        """
+        data = self._read()
+        return data.get("status", "Inactive")
+
+    def get_last_data_time(self):
+        """
+        Returns the last data time for the weather station.
+        """
+        data = self._read()
+        return data.get("last_data_time")
+    
     def update_noise_source_position(self, value):
         """
         Updates the noise source position in the JSON file.
@@ -157,5 +187,38 @@ class WeatherConfiguration:
         self._write(data)
 
         logging.info(
-            f"Updated weather config: noise_source_position={value}"
+            f"Updated weather config: noise_source_position={validated_value}"
+        )
+
+    def update_status(self, status, last_data_time=None):
+        """
+        Updates runtime weather station status.
+
+        Args:
+            status: Expected values are 'Active' or 'Inactive'.
+            last_data_time: Optional timestamp string for the last fetch attempt.
+        """
+        validated_status = self._validate_status(status)
+
+        if validated_status is None:
+            return
+
+        data = self._read()
+        changed = False
+
+        if data.get("status") != validated_status:
+            data["status"] = validated_status
+            changed = True
+
+        if last_data_time is not None and data.get("last_data_time") != last_data_time:
+            data["last_data_time"] = last_data_time
+
+        if not changed:
+            return
+
+        self._write(data)
+
+        logging.info(
+            f"Updated weather config: status={validated_status}, "
+            f"last_data_time={last_data_time}"
         )

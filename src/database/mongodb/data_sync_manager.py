@@ -9,7 +9,7 @@ from pymongo.errors import BulkWriteError
 
 
 from .audio_transfer import AudioTransfer 
-from .microphone_details import MicrophoneDetails
+from .device_details import DeviceDetails
 from .device_document_watcher import DeviceDocumentWatcher
 
 class DataSyncManager:
@@ -58,7 +58,7 @@ class DataSyncManager:
                     self.mysql_fetcher = MySQLDataFetcher(self.mysql_pool, self.data_queue, self.status_queue)  # Recreate the fetcher with the new queue
                     self.mongo_transfer = MongoDBDataTransfer(self.mongo_client, self.data_queue, self.data_base, self.status_queue)  # Recreate the transfer with the new queue
                     self.audio_transfer = AudioTransfer(self.mongo_client, self.mysql_pool, self.data_base, self.data_base_status,)
-                    self.microphone_details = MicrophoneDetails(self.device, self.mongo_client, self.data_base_status, self.callback)
+                    self.microphone_details = DeviceDetails(self.device, self.mongo_client, self.data_base_status, self.callback)
                     self.device_document_watcher = DeviceDocumentWatcher(
                         collection=self.microphone_details.db[self.microphone_details.collection_name],
                         device_id=self.microphone_details.device_id,

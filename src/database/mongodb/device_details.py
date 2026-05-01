@@ -9,10 +9,10 @@ import nsrt_mk3_dev
 from pymongo.change_stream import ChangeStream
 from pymongo.errors import OperationFailure
 
-from utils.json_config_loader import LoadConfiguration
+from utils.json_config_loader import LoadConfiguration, WeatherConfiguration
 from utils.env_config_loader import Config
 
-class MicrophoneDetails:
+class DeviceDetails:
     def __init__(self, device, mongo_client, data_base_status, callback):
         self.device = device                 # Initially None. Set later when device is detected. Getting instance of nsrt_mk3_dev.NsrtMk3Dev
         self.serial_number = Config.SERIAL_NUMBER       # Statically loaded from config for registration clarity. 
@@ -24,6 +24,7 @@ class MicrophoneDetails:
         self.callback = callback
         self.collection_name = 'microphones'
         self.callback_in_progress = False
+        self.weather_config = WeatherConfiguration()
 
     def update_device(self, new_device):
         self.device = new_device
@@ -83,13 +84,18 @@ class MicrophoneDetails:
                 },
                 "parameters": self.parameters,
                 "audio_trigger": 70,
-                "noise_source_position": None,
                 "updated_parameters": {
                     "AcousticSequences": None,
                     "SpectrumSequences": None,
                     "AudioSequences": None
                 },
-                "last_updated": now_bucharest
+                "last_updated": now_bucharest,
+                "weather": {
+                    "enabled": Config.is_weather_enabled(),
+                    "status": self.weather_config.get_status(),
+                    "last_data_time": self.weather_config.get_last_data_time(),
+                    "noise_source_position": None,
+                },
             }
             try:
                 await self.db[self.collection_name].insert_one(document_fields)
@@ -109,7 +115,10 @@ class MicrophoneDetails:
                 "battery":{"current": None, "charged": None, "timeremaining": None},
                 "parameters": self.parameters,
                 "updated_parameters": {"AcousticSequences": None, "SpectrumSequences": None, "AudioSequences": None},
-                "last_updated": now_bucharest
+                "last_updated": now_bucharest,
+                "weather.enabled": Config.is_weather_enabled(),
+                "weather.status": self.weather_config.get_status(),
+                "weather.last_data_time": self.weather_config.get_last_data_time(),
             }
             try:
                 await self.db[self.collection_name].update_one(
@@ -136,6 +145,9 @@ class MicrophoneDetails:
             "altitude": None,
             "latitude": None,
             "longitude": None,
+            "weather.enabled": Config.is_weather_enabled(),
+            "weather.status": self.weather_config.get_status(),
+            "weather.last_data_time": self.weather_config.get_last_data_time(),
             "last_updated": datetime.datetime.now(pytz.timezone('Europe/Bucharest'))
         }
 

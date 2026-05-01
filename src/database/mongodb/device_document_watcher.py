@@ -48,9 +48,9 @@ class DeviceDocumentWatcher:
                             logging.info(f"Detected change in audio_trigger: {new_trigger_value}")
                             await self.on_audio_trigger(new_trigger_value)
                     
-                    if "noise_source_position" in updated_fields:
-                        new_position = updated_fields.get("noise_source_position")
-                        logging.info(f"Detected change in noise_source_position: {new_position}")
+                    if "weather.noise_source_position" in updated_fields:
+                        new_position = updated_fields.get("weather.noise_source_position")
+                        logging.info(f"Detected change in weather.noise_source_position: {new_position}")
                         self.weather_config.update_noise_source_position(new_position)
 
         except asyncio.CancelledError:
