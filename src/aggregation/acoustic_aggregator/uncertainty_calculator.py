@@ -49,10 +49,17 @@ class UncertaintyCalculator(ValueAggregator):
         logging.info(f"[Uncertainty] Lden={lden:.2f} dB | U(Lden) = ±{u_lden:.2f} dB")
         await self.insert_lden_uncertainty(
             self.db_name, "U_Lden", start_time,
-            lden, u_lden,
-            lday, lday_ref, uday_ref,
-            levening, levening_ref, uevening_ref,
-            lnight, lnight_ref, unight_ref,
+            self._round(lden),
+            self._round(u_lden),
+            self._round(lday),
+            self._round(lday_ref),
+            self._round(uday_ref),
+            self._round(levening),
+            self._round(levening_ref),
+            self._round(uevening_ref),
+            self._round(lnight),
+            self._round(lnight_ref),
+            self._round(unight_ref),
         )
 
     async def compute_lday_temporal_uncertainty(self, db_name, start_time, end_time, uncertainty):
@@ -516,6 +523,9 @@ class UncertaintyCalculator(ValueAggregator):
                 """
                 await cur.execute(create_event_sql)
                 await conn.commit()
+
+    def _round(self, value):
+        return round(value, 2) if value is not None else None
 
     async def aggregate(self):
         #Empty function
