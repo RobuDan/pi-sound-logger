@@ -25,9 +25,20 @@ class DeviceDetails:
         self.collection_name = 'microphones'
         self.callback_in_progress = False
         self.weather_config = WeatherConfiguration()
+        self.bucharest_tz = pytz.timezone("Europe/Bucharest")
 
     def update_device(self, new_device):
         self.device = new_device
+
+    def get_last_data_time_as_datetime(self):
+        raw = self.weather_config.get_last_data_time()
+
+        if not raw:
+            return None
+
+        return self.bucharest_tz.localize(
+            datetime.datetime.strptime(raw, "%Y-%m-%d %H:%M:%S")
+        )
 
     async def ensure_collection_exists(self):
             try:
@@ -43,15 +54,13 @@ class DeviceDetails:
             except Exception as e:
                 logging.error(f"Error ensuring collection exists in '{self.data_base_status}': {str(e)}")
 
-
     async def create_initial_device_document(self):
         """
         Create or update the initial MongoDB document for this device,
         using device methods to retrieve metadata if available.
         """
-        bucharest_tz = pytz.timezone('Europe/Bucharest')
-        now_bucharest = datetime.datetime.now(bucharest_tz)
-
+        now_bucharest = datetime.datetime.now(self.bucharest_tz)
+        
         model, firmware, dob, doc = None, None, None, None
         if self.device:
             try:
@@ -93,7 +102,7 @@ class DeviceDetails:
                 "weather": {
                     "enabled": Config.is_weather_enabled(),
                     "status": self.weather_config.get_status(),
-                    "last_data_time": self.weather_config.get_last_data_time(),
+                    "last_data_time": self.get_last_data_time_as_datetime(),
                     "noise_source_position": None,
                 },
             }
@@ -118,7 +127,7 @@ class DeviceDetails:
                 "last_updated": now_bucharest,
                 "weather.enabled": Config.is_weather_enabled(),
                 "weather.status": self.weather_config.get_status(),
-                "weather.last_data_time": self.weather_config.get_last_data_time(),
+                "weather.last_data_time": self.get_last_data_time_as_datetime(),
             }
             try:
                 await self.db[self.collection_name].update_one(
@@ -147,8 +156,8 @@ class DeviceDetails:
             "longitude": None,
             "weather.enabled": Config.is_weather_enabled(),
             "weather.status": self.weather_config.get_status(),
-            "weather.last_data_time": self.weather_config.get_last_data_time(),
-            "last_updated": datetime.datetime.now(pytz.timezone('Europe/Bucharest'))
+            "weather.last_data_time": self.get_last_data_time_as_datetime(),
+            "last_updated": datetime.datetime.now(self.bucharest_tz)
         }
 
         try:
@@ -280,8 +289,11 @@ class DeviceDetails:
             while True:
                 await self.fetch_and_update_microphone_status()
                 await asyncio.sleep(25)
+
+        except asyncio.CancelledError:
+            logging.info("StatusMicrophone task was cancelled")
+            raise
+
         except Exception as e:
             logging.error(f"Unexpected error in run method of StatusMicrophone: {e}")
-        except asyncio.CancelledError:
-            logging.info("StatusMicrohpone task was cancelled")
                 
