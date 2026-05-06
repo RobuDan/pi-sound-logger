@@ -19,7 +19,7 @@ PYTHON_BIN="python3.10"
 echo "[INFO] Installing build dependencies for Python $PYTHON_VERSION ..."
 sudo apt update && sudo apt upgrade -y
 sudo apt install -y build-essential zlib1g-dev libncurses5-dev libgdbm-dev \
-    libnss3-dev libssl-dev libreadline-dev libffi-dev libsqlite3-dev wget libbz2-dev
+    libnss3-dev libssl-dev libreadline-dev libffi-dev libsqlite3-dev wget libbz2-dev portaudio19-dev
 
 # 2. Download, build, and altinstall Python 3.10.0 (idempotent: will not overwrite if already present)
 if ! command -v python3.10 &>/dev/null || [[ "$($PYTHON_BIN --version 2>&1)" != "Python 3.10.0" ]]; then
