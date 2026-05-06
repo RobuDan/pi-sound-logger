@@ -131,7 +131,7 @@ class Application:
                 logging.error(f"Error stopping the manager: {e}")
 
         # Inform MongoDB that the device is disconnected
-        self.mongodb_manager.set_device(None)
+        await self.mongodb_manager.set_device(None)
 
         # Wait for reconnection signal
         await self.device_connected_event.wait()

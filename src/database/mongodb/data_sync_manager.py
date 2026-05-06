@@ -172,7 +172,11 @@ class MySQLDataFetcher:
                             return
                         ids = [row[id_index] for row in results]
                         data_only = [tuple(col for idx, col in enumerate(row) if idx != id_index) for row in results]
-                        compressed_data = zlib.compress(pickle.dumps(data_only))
+                        payload = {
+                            "ids": ids,
+                            "rows": data_only
+                        }
+                        compressed_data = zlib.compress(pickle.dumps(payload))
                         message = {
                             "action": "insert",
                             "data": {
@@ -301,6 +305,7 @@ class MongoDBDataTransfer:
         self.db = self.mongo_client[self.data_base]
         collection_name = table_name.lower()
         existing_collections = await self.db.list_collection_names()
+        collection = self.db[collection_name]
 
         # Determine granularity for time series collections based on the table name
         granularity = 'seconds'
@@ -339,6 +344,10 @@ class MongoDBDataTransfer:
                 # Indexing for the 'connectivity' collection
                 await self.db[collection_name].create_index([("timestamp", ASCENDING)], expireAfterSeconds=self.ttl_seconds)
                 logging.info(f"Index on 'timestamp' created for {collection_name}.")
+        try:
+            await collection.create_index([("source_id", ASCENDING)], background=True)
+        except Exception as e:
+            logging.warning(f"Could not create source_id retry lookup index for {collection_name}: {e}")
         #else:
             #logging.info(f"Collection {collection_name} already exists.")
 
@@ -356,7 +365,7 @@ class MongoDBDataTransfer:
         start_time = time.perf_counter()
         try:
             decompress_start = time.perf_counter()
-            batch_data = pickle.loads(zlib.decompress(compressed_data))
+            payload = pickle.loads(zlib.decompress(compressed_data))
             decompress_end = time.perf_counter()
             
             if table_name not in self.schema_map:
@@ -364,21 +373,39 @@ class MongoDBDataTransfer:
                 return
 
             column_names = self.schema_map[table_name]
+            if isinstance(payload, dict):
+                batch_ids = payload.get("ids", [])
+                batch_data = payload.get("rows", [])
+            else:
+                batch_ids = []
+                batch_data = payload
+
             documents = []
 
-            for data_tuple in batch_data:
+            for index, data_tuple in enumerate(batch_data):
                 document = {column_names[i]: data_tuple[i] for i in range(min(len(column_names), len(data_tuple)))}
+                if index < len(batch_ids):
+                    document["source_id"] = batch_ids[index]
                 documents.append(document)
 
             insert_start = time.perf_counter()
             collection = self.db[table_name.lower()]
+            if batch_ids:
+                existing_ids = await self.fetch_existing_source_ids(collection, batch_ids)
+                documents_to_insert = [
+                    document for document in documents
+                    if document.get("source_id") not in existing_ids
+                ]
+            else:
+                documents_to_insert = documents
             
-            try:
-                await asyncio.wait_for(collection.insert_many(documents), timeout=15)
-            except asyncio.TimeoutError:
-                return
-            except asyncio.CancelledError:
-                raise
+            if documents_to_insert:
+                try:
+                    await asyncio.wait_for(collection.insert_many(documents_to_insert), timeout=15)
+                except asyncio.TimeoutError:
+                    return
+                except asyncio.CancelledError:
+                    raise
 
             insert_end = time.perf_counter()
             end_time = time.perf_counter()
@@ -397,6 +424,20 @@ class MongoDBDataTransfer:
             if 'end_time' not in locals():
                 end_time = time.perf_counter()
                 logging.info(f"Task for '{table_name}' ended prematurely after {end_time - start_time:.2f}s.")
+
+    async def fetch_existing_source_ids(self, collection, source_ids):
+        """Return source ids that MongoDB already has for this collection."""
+        existing_ids = set()
+        for start in range(0, len(source_ids), 1000):
+            chunk = source_ids[start:start + 1000]
+            cursor = collection.find(
+                {"source_id": {"$in": chunk}},
+                {"_id": 0, "source_id": 1}
+            )
+            async for document in cursor:
+                if "source_id" in document:
+                    existing_ids.add(document["source_id"])
+        return existing_ids
 
     async def process_data(self, message):
         """This function processes the messages received from the queue, decompresses and unpickles before passing to where it is needed"""
@@ -431,6 +472,9 @@ class MongoDBDataTransfer:
                 data = await self.data_queue.get()
                 if data is None:  # Check for a sentinel value to end the loop
                     break
+                if data.get("action") == "prepare_collection":
+                    await self.process_data(data)
+                    continue
                 task = asyncio.create_task(self.process_data(data))
                 tasks.append(task)
                 # Optionally limit the number of concurrent tasks
@@ -452,11 +496,3 @@ class MongoDBDataTransfer:
             await self.status_queue.put(None)
         except Exception as e:
             logging.error(f"Error sending termination signal to the queue: {e}")
-
-        # Attempt to close the MongoDB client connection
-        if self.mongo_client is not None:
-            try:
-                self.mongo_client.close()
-                logging.info("MongoDB client connection successfully closed.")
-            except Exception as e:
-                logging.error(f"Error closing MongoDB client connection: {e}")
