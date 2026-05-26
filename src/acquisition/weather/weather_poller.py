@@ -87,6 +87,12 @@ class WeatherPoller:
             last_data_time=last_data_time,
         )
 
+        self._apply_rain_event_delta(
+            weather_data=weather_data,
+            fetch_time=fetch_time,
+            save_time=save_time,
+        )
+
         await self._insert_weather_data(
             weather_data=weather_data,
             save_time=save_time,
@@ -94,6 +100,86 @@ class WeatherPoller:
 
     async def _fetch_weather_data(self) -> dict[str, Any] | None:
         return await self.client.get_weather_minute_data()
+
+    def _apply_rain_event_delta(
+        self,
+        weather_data: dict[str, Any],
+        fetch_time: datetime,
+        save_time: datetime,
+    ) -> None:
+        raw_rain_event = weather_data.get("rain_event")
+        mysql_timestamp = self.timestamp_provider.to_mysql_timestamp(save_time)
+
+        if raw_rain_event is None:
+            weather_data["rain_event"] = None
+            self.weather_config.clear_rain_event_baseline(timestamp=mysql_timestamp)
+            logging.warning(
+                f"Missing rain_event value for weather poll at "
+                f"{fetch_time.isoformat(timespec='seconds')}"
+            )
+            return
+
+        try:
+            current_rain_event = float(raw_rain_event)
+        except (TypeError, ValueError):
+            weather_data["rain_event"] = None
+            self.weather_config.clear_rain_event_baseline(timestamp=mysql_timestamp)
+            logging.warning(
+                f"Invalid rain_event value for weather poll at "
+                f"{fetch_time.isoformat(timespec='seconds')}: {raw_rain_event}"
+            )
+            return
+
+        previous_baseline = self.weather_config.get_rain_event_baseline()
+        previous_baseline_time = self.weather_config.get_rain_event_baseline_time()
+
+        if self._is_rain_baseline_stale(previous_baseline_time, save_time):
+            logging.info(
+                f"Weather rain_event baseline is stale. "
+                f"baseline_time={previous_baseline_time}, current_timestamp={mysql_timestamp}"
+            )
+            previous_baseline = None
+
+        if previous_baseline is None:
+            rain_delta = 0.0
+        elif current_rain_event < previous_baseline:
+            logging.info(
+                f"Weather rain_event counter reset detected. "
+                f"previous={previous_baseline}, current={current_rain_event}"
+            )
+            rain_delta = 0.0
+        else:
+            rain_delta = current_rain_event - previous_baseline
+
+        rain_delta = round(max(0.0, rain_delta), 2)
+        weather_data["rain_event"] = rain_delta
+        self.weather_config.update_rain_event_baseline(
+            current_rain_event,
+            timestamp=mysql_timestamp,
+        )
+
+        logging.info(
+            f"Weather rain delta | poll_time={fetch_time.isoformat(timespec='seconds')} "
+            f"| db_timestamp={mysql_timestamp} | previous_raw={previous_baseline} "
+            f"| current_raw={current_rain_event} | stored_delta={rain_delta}"
+        )
+
+    def _is_rain_baseline_stale(
+        self,
+        baseline_time: str | None,
+        save_time: datetime,
+    ) -> bool:
+        if baseline_time is None:
+            return False
+
+        try:
+            previous_time = datetime.fromisoformat(baseline_time)
+        except ValueError:
+            return True
+
+        current_time = save_time.replace(tzinfo=None)
+        elapsed_seconds = (current_time - previous_time).total_seconds()
+        return elapsed_seconds < 0 or elapsed_seconds > 90
 
     async def _insert_weather_data(
         self,

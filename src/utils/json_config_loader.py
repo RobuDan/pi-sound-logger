@@ -169,6 +169,29 @@ class WeatherConfiguration:
         """
         data = self._read()
         return data.get("last_data_time")
+
+    def get_rain_event_baseline(self):
+        """
+        Returns the last raw cumulative rain_event value read from the API.
+        """
+        data = self._read()
+        value = data.get("rain_event_baseline")
+
+        if value is None:
+            return None
+
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            logging.warning(f"Ignoring invalid rain_event_baseline value: {value}")
+            return None
+
+    def get_rain_event_baseline_time(self):
+        """
+        Returns the timestamp associated with the stored rain_event baseline.
+        """
+        data = self._read()
+        return data.get("rain_event_baseline_time")
     
     def update_noise_source_position(self, value):
         """
@@ -222,3 +245,33 @@ class WeatherConfiguration:
             f"Updated weather config: status={validated_status}, "
             f"last_data_time={last_data_time}"
         )
+
+    def update_rain_event_baseline(self, value, timestamp=None):
+        """
+        Stores the latest raw cumulative rain_event value used as the delta baseline.
+        """
+        try:
+            baseline = float(value)
+        except (TypeError, ValueError):
+            logging.warning(f"Ignoring invalid rain_event baseline update: {value}")
+            return
+
+        data = self._read()
+
+        data["rain_event_baseline"] = baseline
+        if timestamp is not None:
+            data["rain_event_baseline_time"] = timestamp
+
+        self._write(data)
+
+    def clear_rain_event_baseline(self, timestamp=None):
+        """
+        Clears the rain_event baseline after missing or invalid API rain data.
+        """
+        data = self._read()
+
+        data["rain_event_baseline"] = None
+        if timestamp is not None:
+            data["rain_event_baseline_time"] = timestamp
+
+        self._write(data)
