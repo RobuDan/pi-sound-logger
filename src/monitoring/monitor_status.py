@@ -110,19 +110,19 @@ class MonitorStatus:
 
         self.scheduler.add_job(
             self.execute_scheduled_reset,
-            CronTrigger(hour=2, minute=0, second=3),
+            CronTrigger(hour=2, minute=0, second=30),
             id='reset_at_2am',
             replace_existing=True,
         )
-        logging.info("Scheduled reset job at 02:00:03 AM.")
+        logging.info("Scheduled reset job at 02:00:30 AM.")
 
         self.scheduler.add_job(
             self.execute_scheduled_reset,
-            CronTrigger(hour=13, minute=0, second=3),  
+            CronTrigger(hour=13, minute=0, second=30),  
             id='reset_at_1pm',
             replace_existing=True,
         )
-        logging.info("Scheduled reset job at 13:00:03 PM.")
+        logging.info("Scheduled reset job at 13:00:30 PM.")
 
     async def execute_scheduled_reset(self):
         """
