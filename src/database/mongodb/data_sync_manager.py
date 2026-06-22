@@ -400,14 +400,11 @@ class MongoDBDataTransfer:
 
             insert_start = time.perf_counter()
             collection = self.db[table_name.lower()]
-            if batch_ids:
-                existing_ids = await self.fetch_existing_source_ids(collection, batch_ids)
-                documents_to_insert = [
-                    document for document in documents
-                    if document.get("source_id") not in existing_ids
-                ]
-            else:
-                documents_to_insert = documents
+            existing_timestamps = await self.fetch_existing_timestamps(collection, documents)
+            documents_to_insert = [
+                document for document in documents
+                if document.get("timestamp") not in existing_timestamps
+            ]
             
             if documents_to_insert:
                 try:
@@ -435,19 +432,25 @@ class MongoDBDataTransfer:
                 end_time = time.perf_counter()
                 logging.info(f"Task for '{table_name}' ended prematurely after {end_time - start_time:.2f}s.")
 
-    async def fetch_existing_source_ids(self, collection, source_ids):
-        """Return source ids that MongoDB already has for this collection."""
-        existing_ids = set()
-        for start in range(0, len(source_ids), 1000):
-            chunk = source_ids[start:start + 1000]
+    async def fetch_existing_timestamps(self, collection, documents):
+        """Return timestamps that MongoDB already has for this collection."""
+        existing_timestamps = set()
+        timestamps = [
+            document["timestamp"]
+            for document in documents
+            if "timestamp" in document
+        ]
+
+        for start in range(0, len(timestamps), 1000):
+            chunk = timestamps[start:start + 1000]
             cursor = collection.find(
-                {"source_id": {"$in": chunk}},
-                {"_id": 0, "source_id": 1}
+                {"timestamp": {"$in": chunk}},
+                {"_id": 0, "timestamp": 1}
             )
             async for document in cursor:
-                if "source_id" in document:
-                    existing_ids.add(document["source_id"])
-        return existing_ids
+                if "timestamp" in document:
+                    existing_timestamps.add(document["timestamp"])
+        return existing_timestamps
 
     async def process_data(self, message):
         """This function processes the messages received from the queue, decompresses and unpickles before passing to where it is needed"""
