@@ -140,18 +140,37 @@ class Device:
         result["sample_monotonic_s"] = round(time.monotonic(), 6)
         return result
 
-    def enable_auto_start(self):
+    def verify_readback(self, register, expected, read, mask=None, report=None):
+        """Retry reads only: a delayed/stale reply must not repeat a write."""
+        last = "no reply"
+        for attempt in range(1, 6):
+            try:
+                observed = read(self.address, register)
+                last = f"{observed} (0x{observed:04X})"
+                if (observed if mask is None else observed & mask) == expected:
+                    return
+            except OSError as exc:
+                last = f"{type(exc).__name__}: {exc}"
+            note = (f"Register 0x{register:02X}: expected {expected}"
+                    f"{'' if mask is None else f' with mask 0x{mask:02X}'}, "
+                    f"observed {last}; read {attempt}/5")
+            print(note, flush=True)
+            if report is not None:
+                report(note)
+            if attempt < 5:
+                time.sleep(0.1)
+        raise RuntimeError(f"Readback failed at 0x{register:02X}: expected {expected}, observed {last} after 5 reads")
+
+    def enable_auto_start(self, report=None):
         current = self.bus.read_byte_data(self.address, 0x1D)
         self.bus.write_byte_data(self.address, 0x1D, current | 1)
-        if not self.bus.read_byte_data(self.address, 0x1D) & 1:
-            raise RuntimeError("Auto-start readback failed")
+        self.verify_readback(0x1D, 1, self.bus.read_byte_data, mask=1, report=report)
 
-    def configure(self, settings):
+    def configure(self, settings, report=None):
         for register, target in ((0x21, settings.protection_mv), (0x25, settings.restart_mv)):
             self.bus.write_word_data(self.address, register, target)
-            if self.bus.read_word_data(self.address, register) != target:
-                raise RuntimeError(f"Threshold readback failed at 0x{register:02X}")
-        self.enable_auto_start()
+            self.verify_readback(register, target, self.bus.read_word_data, report=report)
+        self.enable_auto_start(report=report)
 
     def arm_cutoff(self, seconds):
         # Exactly one write attempt: a failed acknowledgement can still mean
@@ -382,7 +401,11 @@ def configure_and_record(settings, device, journal):
     journal.write("before_configuration", initial, force=True)
     if not initial["sample_valid"]:
         raise RuntimeError("Invalid initial sample; no registers were written")
-    device.configure(settings)
+    try:
+        device.configure(settings, report=lambda note: journal.write("readback_retry", note=note, force=True))
+    except (OSError, RuntimeError) as exc:
+        journal.write("configuration_failed", note=str(exc), force=True)
+        raise
     journal.write("after_configuration", device.read(), force=True)
     print(f"Protection={settings.protection_mv}mV Restart={settings.restart_mv}mV Auto-start=ON", flush=True)
 

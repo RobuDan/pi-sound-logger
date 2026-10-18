@@ -115,10 +115,60 @@ class UpsTests(unittest.TestCase):
             ups.configure_and_record(self.settings, self.device, self.journal)
         self.assertEqual(self.bus.writes, [])
 
-    def test_configure_fails_on_incorrect_readback(self):
+    @patch.object(ups.time, "sleep")
+    def test_configure_fails_on_incorrect_readback(self, sleep):
         self.bus.ignore_register = 0x25
-        with self.assertRaises(RuntimeError):
-            self.device.configure(replace(self.settings, restart_mv=8100))
+        with self.assertRaisesRegex(RuntimeError, "0x25: expected 8100, observed 8000.*after 5 reads"):
+            ups.configure_and_record(replace(self.settings, restart_mv=8100), self.device, self.journal)
+        self.assertEqual(sleep.call_count, 4)
+        self.assertEqual([v for r, v in self.bus.writes if r == 0x25], [8100])
+        self.assertEqual(self.journal.events[-1]["event"], "configuration_failed")
+        self.assertNotIn("after_configuration", [e["event"] for e in self.journal.events])
+
+    @patch.object(ups.time, "sleep")
+    def test_stale_restart_readback_recovers_without_repeating_write(self, sleep):
+        original_read = self.bus.read_word_data
+        replies = iter([6500, 8000])
+        self.bus.read_word_data = Mock(side_effect=lambda address, register:
+            next(replies) if register == 0x25 else original_read(address, register))
+        ups.configure_and_record(self.settings, self.device, self.journal)
+        self.assertEqual([v for r, v in self.bus.writes if r == 0x25], [8000])
+        sleep.assert_called_once_with(0.1)
+        retry = next(e for e in self.journal.events if e["event"] == "readback_retry")
+        self.assertIn("0x25: expected 8000", retry["note"])
+        self.assertIn("observed 6500", retry["note"])
+        self.assertEqual(self.journal.events[-1]["event"], "after_configuration")
+
+    @patch.object(ups.time, "sleep")
+    def test_transient_read_error_recovers_without_repeating_write(self, sleep):
+        original_read = self.bus.read_word_data
+        replies = iter([OSError("remote I/O error"), 8000])
+        def read(address, register):
+            if register != 0x25:
+                return original_read(address, register)
+            value = next(replies)
+            if isinstance(value, Exception):
+                raise value
+            return value
+        self.bus.read_word_data = read
+        ups.configure_and_record(self.settings, self.device, self.journal)
+        self.assertEqual([v for r, v in self.bus.writes if r == 0x25], [8000])
+        self.assertTrue(any("remote I/O error" in e["note"] for e in self.journal.events))
+        self.assertEqual(self.journal.events[-1]["event"], "after_configuration")
+
+    @patch.object(ups.time, "sleep")
+    def test_stale_auto_start_readback_recovers_preserving_other_bits(self, sleep):
+        self.bus.read_byte_data = Mock(side_effect=[0x08, 0x08, 0x09])
+        self.device.enable_auto_start()
+        self.assertEqual(self.bus.writes, [(0x1D, 0x09)])
+        sleep.assert_called_once_with(0.1)
+
+    def test_threshold_write_error_is_not_retried_or_reported_successful(self):
+        self.bus.write_word_data = Mock(side_effect=OSError("write acknowledgement lost"))
+        with self.assertRaises(OSError):
+            ups.configure_and_record(self.settings, self.device, self.journal)
+        self.bus.write_word_data.assert_called_once()
+        self.assertEqual(self.journal.events[-1]["event"], "configuration_failed")
 
     def test_short_i2c_frame_is_not_zero_padded(self):
         self.bus.raw = self.bus.raw[:40]

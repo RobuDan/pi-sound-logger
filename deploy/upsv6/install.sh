@@ -64,7 +64,18 @@ fi
 
 systemctl daemon-reload
 systemctl enable upsv6-config.service ups-logger.service
-systemctl restart upsv6-config.service
+if ! systemctl restart upsv6-config.service; then
+    echo "Configuration attempt failed; waiting up to 35 seconds for the service's automatic retries."
+fi
+config_deadline=$((SECONDS + 35))
+until systemctl is-active --quiet upsv6-config.service; do
+    if (( SECONDS >= config_deadline )); then
+        echo "UPS configuration did not succeed; monitoring was not started. Recent errors:" >&2
+        journalctl -u upsv6-config.service -b -n 80 --no-pager -o cat >&2 || true
+        exit 1
+    fi
+    sleep 1
+done
 systemctl start ups-logger.service
 systemctl --no-pager --full status upsv6-config.service ups-logger.service
 echo "Logs: /var/log/upsv6 ; configuration: /etc/upsv6.json"

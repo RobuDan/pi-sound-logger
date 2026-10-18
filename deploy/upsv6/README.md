@@ -77,6 +77,14 @@ Sources:
    Check for 7400 protection / 8000 restart and `auto_start=1` in the CSV.
    The software trigger is in `/etc/upsv6.json`, not a UPS register.
 
+   Each configuration write is followed by up to five verification reads,
+   100 ms apart when needed. A stale reply or read error is recorded with the
+   register, expected value, and observed value in both CSV and the service
+   journal. Verification retries do not repeat the write. Persistent failures
+   still fail configuration; the installer waits up to 35 seconds for systemd's
+   automatic service retries before reporting failure and its recent journal.
+   The shutdown countdown retains its separate single-write behavior.
+
 4. Follow live events while external power is disconnected:
 
    ```bash
