@@ -14,6 +14,19 @@ from unittest.mock import Mock, patch
 import ups_logger as ups
 
 
+# Actual malformed frames preceding the three unintended shutdowns in the
+# supplied archive (UID tail anonymized). The second block repeats the identity
+# at offset zero; the bytes yielding 17153/9216/5888 are retained.
+CAPTURED_HEADER_ECHOES = [
+    "a6014300240017000000000000009c14762efd1fae0cce03ee01020020010087"
+    "a6014300240017000000000000009a14782e0120ae0c",
+    "a60143002400170000000000000086144d00c81ead0ced020c00e6fd1e010089"
+    "a60143002400170000000000000082144c00d01ead0c",
+    "a6014300240017000000000000008c14872e0120ae0c1d039c0106001f010087"
+    "a6014300240017000000000000008b14852e0720ae0c",
+]
+
+
 def registers(battery=8100, current=-600, temperature=30, sr1=0x89, cr1=0x08,
               countdown=0, output=5250):
     raw = bytearray(54)
@@ -101,6 +114,62 @@ class UpsTests(unittest.TestCase):
         self.assertEqual(sample["battery_mv"], 422)
         self.assertEqual(len(sample["raw_registers_hex"]), 108)
         self.assertIn("header_echo", sample["validation_errors"])
+
+    def test_all_captured_second_block_echoes_are_rejected_without_shutdown(self):
+        for frame in CAPTURED_HEADER_ECHOES:
+            with self.subTest(frame=frame):
+                sample = ups.decode_registers(bytes.fromhex(frame))
+                self.assertEqual(sample["shutdown_countdown_s"], 9216)
+                self.assertEqual(sample["protection_mv"], 17153)
+                self.assertEqual(sample["sample_valid"], 0)
+                self.assertIn("second_block_register_header_echo", sample["validation_errors"])
+                controller = self.shutdown()
+                controller.begin(sample, "existing_countdown", 0)
+                controller.tick(200)
+                self.assertFalse(controller.armed)
+        self.assertEqual(self.bus.writes, [])
+        self.poweroff.assert_not_called()
+        self.assertFalse(Path(self.settings.shutdown_state_file).exists())
+
+    def test_impossible_threshold_is_invalid_without_a_repeated_header(self):
+        struct.pack_into("<H", self.bus.raw, 0x21, 17153)
+        sample = self.device.read()
+        self.assertEqual(sample["sample_valid"], 0)
+        self.assertIn("implausible_protection_mv", sample["validation_errors"])
+
+    def test_unconfirmed_countdown_does_not_commit_shutdown(self):
+        sample = self.device.read()
+        sample["shutdown_countdown_s"] = 120
+        controller = self.shutdown()
+        controller.begin(sample, "existing_countdown", 0)
+        controller.tick(200)
+        self.assertFalse(controller.armed)
+        self.assertEqual(self.bus.writes, [])
+        self.poweroff.assert_not_called()
+        self.assertFalse(Path(self.settings.shutdown_state_file).exists())
+        self.assertEqual(self.journal.events[-1]["event"], "countdown_unconfirmed")
+
+    def test_countdown_confirmation_read_error_does_not_commit_shutdown(self):
+        sample = self.device.read()
+        sample["shutdown_countdown_s"] = 120
+        self.device.read_countdown = Mock(side_effect=OSError("I2C read failed"))
+        controller = self.shutdown()
+        controller.begin(sample, "existing_countdown", 0)
+        controller.tick(200)
+        self.assertFalse(controller.armed)
+        self.assertEqual(self.bus.writes, [])
+        self.poweroff.assert_not_called()
+
+    def test_independently_confirmed_existing_timer_still_powers_off_without_rearming(self):
+        struct.pack_into("<H", self.bus.raw, 0x23, 119)
+        sample = self.device.read()
+        sample["shutdown_countdown_s"] = 120
+        controller = self.shutdown()
+        controller.begin(sample, "existing_countdown", 0)
+        controller.tick(5)
+        self.assertTrue(controller.armed)
+        self.poweroff.assert_called_once()
+        self.assertFalse(any(r == 0x23 for r, v in self.bus.writes))
 
     def test_configure_preserves_other_cr1_bits_and_never_arms_countdown(self):
         ups.configure_and_record(self.settings, self.device, self.journal)
@@ -388,6 +457,27 @@ class UpsTests(unittest.TestCase):
              patch.object(ups, "linux_poweroff", self.poweroff):
             ups.monitor(settings, self.device, self.journal, "test-boot", stop, False)
         self.assertTrue(any("threshold_config_mismatch" in e["event"] for e in self.journal.events))
+        self.assertEqual(self.bus.writes, [])
+        self.poweroff.assert_not_called()
+
+    def test_monitor_replays_captured_echo_and_continues_without_poweroff(self):
+        stop, clock, reads = [False], [0.0], [0]
+        frames = iter([registers(), bytes.fromhex(CAPTURED_HEADER_ECHOES[0]),
+                       registers(), registers()])
+        original_read = self.device.read
+        def read():
+            reads[0] += 1
+            if reads[0] >= 4:
+                stop[0] = True
+            self.bus.raw = bytearray(next(frames, registers()))
+            return original_read()
+        self.device.read = read
+        with patch.object(ups.time, "monotonic", side_effect=lambda: clock[0]), \
+             patch.object(ups.time, "sleep", side_effect=lambda seconds: clock.__setitem__(0, clock[0] + seconds)), \
+             patch.object(ups, "linux_poweroff", self.poweroff):
+            ups.monitor(self.settings, self.device, self.journal, "test-boot", stop, False)
+        self.assertTrue(any("invalid_sample" in e["event"] for e in self.journal.events))
+        self.assertNotIn("shutdown_trigger", [e["event"] for e in self.journal.events])
         self.assertEqual(self.bus.writes, [])
         self.poweroff.assert_not_called()
 

@@ -159,6 +159,17 @@ low-voltage confirmation and do not trigger shutdown. Threshold mismatch also
 suspends ordinary automatic shutdown actions rather than silently rewriting
 evidence. The emergency native cutoff remains active.
 
+The captured 18 October logs exposed another malformed reply: the block
+requested at `0x20` occasionally started with the device ID and UID from
+`0x00`. Earlier versions accepted it and interpreted those bytes as an active
+9216-second countdown, which caused an unintended Linux poweroff without
+arming a real UPS timer. The decoder now rejects repeated identity headers
+and implausible protection/restart voltages. A nonzero countdown in an otherwise
+valid block also needs a consistent independent word read before committing
+shutdown. Rejected frames and unconfirmed timers are logged without register
+writes or a poweroff request. A timer already armed by this process retains
+the existing uncertain-write shutdown safeguards.
+
 The manufacturer's Python demo reverses the fast-charge and charge labels
 relative to its C definitions. This logger retains the raw charge bit and
 uses signed battery current for its human-readable charge direction. The

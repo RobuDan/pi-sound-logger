@@ -120,6 +120,13 @@ def decode_registers(raw):
     # 0x01A6 = 422: observed register-header echo, not a valid running 5V rail.
     if values["output_mv"] == 0x01A6:
         problems.append("output_register_header_echo")
+    # Captured failures return registers 0x00..0x15 for the requested second
+    # block at 0x20. Compare the stable identity/UID bytes, not live voltages.
+    if raw[0] == 0xA6 and raw[0x20:0x2E] == raw[:0x0E]:
+        problems.append("second_block_register_header_echo")
+    for name in ("protection_mv", "restart_mv"):
+        if not 4000 <= values[name] <= 9000:
+            problems.append(f"implausible_{name}")
     values["sample_valid"] = int(not problems)
     values["validation_errors"] = "|".join(problems)
     return values
@@ -179,6 +186,10 @@ class Device:
         observed = self.bus.read_word_data(self.address, 0x23)
         if not max(1, seconds - 5) <= observed <= seconds:
             raise RuntimeError(f"Countdown readback uncertain: {observed}")
+
+    def read_countdown(self):
+        """Independent word read to confirm a timer seen in a block sample."""
+        return self.bus.read_word_data(self.address, 0x23)
 
 
 SAMPLE_FIELDS = list(decode_registers(bytes(54))) + ["read_duration_ms", "sample_monotonic_s"]
@@ -330,14 +341,30 @@ class Shutdown:
             self.committed_record("shutdown_resumed", note="Same-boot shutdown marker; countdown will not be re-armed")
 
     def begin(self, sample, reason, now):
+        if not sample["sample_valid"]:
+            self.journal.write("shutdown_sample_rejected", sample,
+                               sample["validation_errors"], force=True)
+            return
         if self.armed or (now < self.retry_at and not sample["shutdown_countdown_s"]):
             return
+        existing = sample["shutdown_countdown_s"]
+        if existing:
+            try:
+                observed = self.device.read_countdown()
+            except OSError as exc:
+                self.journal.write("countdown_unconfirmed", sample, str(exc), force=True)
+                return
+            if not max(1, existing - 5) <= observed <= existing:
+                self.journal.write("countdown_unconfirmed", sample,
+                                   f"Block countdown={existing}s, independent word read={observed}s; no shutdown committed",
+                                   force=True)
+                return
+            existing = observed
         if self.dry_run:
             if not self.would_shutdown:
                 self.journal.write("would_shutdown", sample, reason, state="dry_run", force=True)
                 self.would_shutdown = True
             return
-        existing = sample["shutdown_countdown_s"]
         if existing:
             self.armed = True
             self.state = "existing_cutoff"
@@ -435,7 +462,8 @@ def monitor(settings, device, journal, boot, stop, dry_run):
                     changed = [key for key in CHANGE_FIELDS if sample[key] != previous[key]]
                     if changed:
                         events.append("changed:" + ",".join(changed))
-                    if sample["ups_runtime_ms"] < previous["ups_runtime_ms"]:
+                    if (sample["sample_valid"] and previous["sample_valid"]
+                            and sample["ups_runtime_ms"] < previous["ups_runtime_ms"]):
                         events.append("ups_runtime_decreased")
                 clock = (time.time(), now)
                 if last_clock and abs((clock[0] - last_clock[0]) - (now - last_clock[1])) > 2:
