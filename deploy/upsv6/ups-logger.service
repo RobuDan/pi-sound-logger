@@ -1,0 +1,19 @@
+[Unit]
+Description=UPS Gen 6 telemetry and graceful low-battery shutdown
+Requires=upsv6-config.service
+After=upsv6-config.service
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 -u /usr/local/sbin/ups_logger.py --config /etc/upsv6.json monitor
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=10
+RuntimeDirectory=upsv6
+RuntimeDirectoryPreserve=yes
+UMask=0027
+
+[Install]
+WantedBy=multi-user.target

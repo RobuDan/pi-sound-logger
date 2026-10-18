@@ -1,5 +1,9 @@
 # Deployment Configuration
 
+Optional UPS Gen 6 telemetry and graceful shutdown setup is documented in
+[upsv6/README.md](upsv6/README.md). Install it explicitly on devices with this
+UPS; the main deployment does not enable battery-triggered poweroff by default.
+
 This folder contains deployment automation scripts and configuration files for provisioning a Raspberry Pi with all dependencies required by the `pi-sound-logger` application.
 
 

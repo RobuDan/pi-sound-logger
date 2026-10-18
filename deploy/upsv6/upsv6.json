@@ -1,0 +1,19 @@
+{
+  "bus": 1,
+  "address": 23,
+  "protection_mv": 7400,
+  "software_shutdown_mv": 7600,
+  "restart_mv": 8000,
+  "low_battery_hold_seconds": 15,
+  "poll_seconds": 1,
+  "log_seconds": 10,
+  "fast_log_below_mv": 7800,
+  "cutoff_delay_seconds": 120,
+  "pre_poweroff_log_seconds": 5,
+  "fsync_seconds": 10,
+  "max_log_bytes": 10485760,
+  "max_log_files": 20,
+  "log_dir": "/var/log/upsv6",
+  "lock_file": "/run/upsv6/i2c.lock",
+  "shutdown_state_file": "/run/upsv6/shutdown.json"
+}

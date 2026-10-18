@@ -1,0 +1,17 @@
+[Unit]
+Description=Configure and record initial UPS Gen 6 state
+After=systemd-modules-load.service local-fs.target
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 -u /usr/local/sbin/ups_logger.py --config /etc/upsv6.json configure
+RemainAfterExit=yes
+Restart=on-failure
+RestartSec=5
+RuntimeDirectory=upsv6
+RuntimeDirectoryPreserve=yes
+
+[Install]
+WantedBy=multi-user.target
