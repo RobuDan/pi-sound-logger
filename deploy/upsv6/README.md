@@ -4,6 +4,9 @@ This is a standalone Raspberry Pi OS service. It uses the system Python and
 `python3-smbus2`; it does not depend on the sound logger's virtual environment.
 The current Windows workspace cannot validate actual UPS power switching.
 
+For the separate UPS-side observer that can report transitions after Linux
+stops, see [MCU_OBSERVER.md](MCU_OBSERVER.md). It is not enabled by `install.sh`.
+
 The existing simple CSV logger and boot configuration do **not** implement
 graceful low-battery shutdown. This replacement does. Linux/systemd must still
 successfully finish stopping the application, databases, and filesystems before
